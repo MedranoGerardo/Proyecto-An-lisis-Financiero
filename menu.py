@@ -2,59 +2,72 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
 import re
-from tkinter import simpledialog
+import locale
+
+# Configurar el locale para usar punto como separador decimal y coma como separador de miles
+locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
 # Funciones de validación
 def validar_solo_letras(cadena):
     return all(caracter.isalpha() or caracter.isspace() for caracter in cadena)
 
 def validar_dos_decimales(cadena):
-    patron = r'^\d+(\.\d{1,2})?$'
-    return re.match(patron, cadena) is not None
+    return re.match(r'^\d+(\.\d{1,2})?$', cadena) is not None
 
 # Funciones de base de datos
-def crear_conexion():
-    return sqlite3.connect('contabilidad.db')
+def ejecutar_db(query, params=(), fetchone=False):
+    with sqlite3.connect('contabilidad.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        conn.commit()
+        if fetchone:
+            return cursor.fetchone()
+        return cursor.fetchall()
 
 def crear_tabla():
-    with crear_conexion() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cuentas_balance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            tipo TEXT NOT NULL,
-            monto REAL NOT NULL
-        )
-        ''')
-        conn.commit()
+    ejecutar_db('''
+    CREATE TABLE IF NOT EXISTS cuentas_balance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nombre TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        monto REAL NOT NULL
+    )
+    ''')
 
 crear_tabla()  # Crear la tabla al iniciar
 
 def cuenta_existe(nombre):
-    with crear_conexion() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM cuentas_balance WHERE nombre = ?", (nombre,))
-        return cursor.fetchone()[0] > 0
+    return ejecutar_db("SELECT COUNT(*) FROM cuentas_balance WHERE nombre = ?", (nombre,), fetchone=True)[0] > 0
 
 def guardar_cuenta(nombre, tipo, monto):
     if cuenta_existe(nombre):
         messagebox.showerror("Error", "Ya existe una cuenta con ese nombre.")
         return
     try:
-        with crear_conexion() as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO cuentas_balance (nombre, tipo, monto) VALUES (?, ?, ?)", (nombre, tipo, monto))
-            conn.commit()
+        ejecutar_db("INSERT INTO cuentas_balance (nombre, tipo, monto) VALUES (?, ?, ?)", (nombre, tipo, monto))
         messagebox.showinfo("Éxito", "Cuenta guardada correctamente.")
     except sqlite3.Error as e:
         messagebox.showerror("Error", f"No se pudo guardar la cuenta: {e}")
 
 def obtener_cuentas_balancegeneral():
-    with crear_conexion() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT nombre, tipo, monto FROM cuentas_balance")
-        return cursor.fetchall()
+    return ejecutar_db("SELECT nombre, tipo, monto FROM cuentas_balance")
+
+def buscar_cuenta(nombre):
+    return ejecutar_db("SELECT nombre, tipo, monto FROM cuentas_balance WHERE nombre = ?", (nombre,), fetchone=True)
+
+def editar_cuenta(nombre, tipo, monto):
+    ejecutar_db("UPDATE cuentas_balance SET tipo = ?, monto = ? WHERE nombre = ?", (tipo, monto, nombre))
+
+def eliminar_cuenta(nombre):
+    ejecutar_db("DELETE FROM cuentas_balance WHERE nombre = ?", (nombre,))
+
+# Función para formatear números con punto decimal y coma como separador de miles
+def formatear_numero(numero):
+    return locale.format_string('%.2f', numero, grouping=True)
+
+# Función para desformatear números (quitar comas)
+def desformatear_numero(numero_str):
+    return numero_str.replace(',', '')
 
 # Funciones de la interfaz gráfica
 def crear_cuenta_balance_general():
@@ -64,69 +77,120 @@ def crear_cuenta_balance_general():
     ventana_datos.configure(bg="#6399b1")
     ventana_datos.resizable(False, False)
 
-    tk.Label(ventana_datos, bg="#6399b1", font=("Arial", 10, "bold"), width=18, anchor="w", text="Nombre de la Cuenta:").grid(row=0, column=0, padx=10, pady=10)
-    entry_nombre = tk.Entry(ventana_datos, width=30)
-    entry_nombre.grid(row=0, column=1, padx=10, pady=10)
+    campos = [
+        ("Nombre de la Cuenta:", "entry_nombre", None),
+        ("Tipo de Cuenta:", "tipo_var", ["Activos circulantes", "Activos no circulantes", "Pasivos circulantes", "Pasivos no circulantes", "Capital"]),
+        ("Monto:", "entry_monto", None)
+    ]
 
-    tk.Label(ventana_datos, bg="#6399b1", font=("Arial", 10, "bold"), width=18, anchor="w", text="Tipo de Cuenta:").grid(row=1, column=0, padx=10, pady=10)
-    tipo_var = tk.StringVar(value="Activos circulantes")
-    option_tipo = tk.OptionMenu(ventana_datos, tipo_var, "Activos circulantes", "Activos no circulantes", "Pasivos circulantes", "Pasivos no circulantes", "Capital")
-    option_tipo.grid(row=1, column=1, padx=10, pady=10)
-    option_tipo.config(width=23)
-
-    tk.Label(ventana_datos, bg="#6399b1", font=("Arial", 10, "bold"), width=18, anchor="w", text="Monto:").grid(row=2, column=0, padx=10, pady=10)
-    entry_monto = tk.Entry(ventana_datos, width=30)
-    entry_monto.grid(row=2, column=1, padx=10, pady=10)
+    widgets = {}
+    for i, (label_text, widget_name, options) in enumerate(campos):
+        tk.Label(ventana_datos, bg="#6399b1", font=("Arial", 10, "bold"), width=18, anchor="w", text=label_text).grid(row=i, column=0, padx=10, pady=10)
+        if options:
+            var = tk.StringVar(value=options[0])
+            widget = tk.OptionMenu(ventana_datos, var, *options)
+            widget.config(width=23)
+            widgets[widget_name] = var
+        else:
+            widget = tk.Entry(ventana_datos, width=30)
+            widgets[widget_name] = widget
+        widget.grid(row=i, column=1, padx=10, pady=10)
 
     tabla = ttk.Treeview(ventana_datos, columns=("Nombre", "Tipo", "Monto"), show='headings')
-    tabla.heading("Nombre", text="Nombre")
-    tabla.heading("Tipo", text="Tipo")
-    tabla.heading("Monto", text="Monto")
+    for col in tabla['columns']:
+        tabla.heading(col, text=col)
     tabla.grid(row=4, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
 
-    entry_buscarCuenta = tk.Entry(ventana_datos, width=30)
-    entry_buscarCuenta.grid(row=5, column=0, padx=10, pady=10)
-
-    btn_buscarCuenta = tk.Button(ventana_datos, text="Buscar Cuenta", bg="#1c3847", fg="white", width=30, height=2)
-    btn_buscarCuenta.grid(row=5, column=1, padx=10, pady=10)
-
-    btn_eliminarCuenta = tk.Button(ventana_datos, text="Eliminar Cuenta", bg="#1c3847", fg="white", width=30, height=2)
-    btn_eliminarCuenta.grid(row=6, column=1, columnspan=2, padx=10, pady=10)
-
-    btn_editarCuenta = tk.Button(ventana_datos, text="Editar Cuenta", bg="#1c3847", fg="white", width=30, height=2)
-    btn_editarCuenta.grid(row=7, column=1, columnspan=2, padx=10, pady=10)
+    tk.label_buscarCuenta = tk.Label(ventana_datos, bg="#6399b1", font=("Arial", 10, "bold"), width=20, anchor="w", text="Ingrese cuenta a buscar:")
+    tk.label_buscarCuenta.grid(row=5, column=0, padx=0, pady=0)
+    entry_buscarCuenta = tk.Entry(ventana_datos, width=25)
+    entry_buscarCuenta.grid(row=6, column=0, padx=0, pady=0)
 
     def actualizar_tabla_cuentas():
         for fila in tabla.get_children():
             tabla.delete(fila)
-        cuentas = obtener_cuentas_balancegeneral()
-        for cuenta in cuentas:
-            tabla.insert("", tk.END, values=cuenta)
+        for cuenta in obtener_cuentas_balancegeneral():
+            nombre, tipo, monto = cuenta
+            monto_formateado = formatear_numero(monto)
+            tabla.insert("", tk.END, values=(nombre, tipo, monto_formateado))
 
-    def submit_datos():
-        nombre = entry_nombre.get().strip()
-        tipo = tipo_var.get()
-        monto_texto = entry_monto.get().strip()
+    def limpiar_campos():
+        widgets['entry_nombre'].delete(0, tk.END)
+        widgets['tipo_var'].set("Activos circulantes")
+        widgets['entry_monto'].delete(0, tk.END)
+        entry_buscarCuenta.delete(0, tk.END)
 
+    def validar_campos():
+        nombre = widgets['entry_nombre'].get().strip()
+        monto_texto = widgets['entry_monto'].get().strip()
         if not nombre or not monto_texto:
             messagebox.showerror("Error", "No puede dejar campos vacíos.")
-            return
+            return False
         if not validar_solo_letras(nombre):
             messagebox.showerror("Error", "El nombre de la cuenta solo puede contener letras.")
-            return
+            return False
         if not validar_dos_decimales(monto_texto):
             messagebox.showerror("Error", "El monto debe ser un número con máximo dos decimales.")
+            return False
+        return True
+
+    def buscar_cuenta_gui():
+        nombre = entry_buscarCuenta.get().strip()
+        if not nombre:
+            messagebox.showerror("Error", "Ingrese un nombre de cuenta para buscar.")
             return
+        cuenta = buscar_cuenta(nombre)
+        if cuenta:
+            widgets['entry_nombre'].delete(0, tk.END)
+            widgets['entry_nombre'].insert(0, cuenta[0])
+            widgets['tipo_var'].set(cuenta[1])
+            widgets['entry_monto'].delete(0, tk.END)
+            widgets['entry_monto'].insert(0, str(cuenta[2]))
+            messagebox.showinfo("Éxito", "Cuenta encontrada.")
+        else:
+            messagebox.showerror("Error", "La cuenta no existe.")
 
-        try:
-            monto = float(monto_texto)
-            guardar_cuenta(nombre, tipo, monto)
+    def eliminar_cuenta_gui():
+        nombre = widgets['entry_nombre'].get().strip()
+        if not nombre:
+            messagebox.showerror("Error", "Seleccione una cuenta para eliminar.")
+            return
+        if messagebox.askyesno("Confirmar", f"¿Está seguro de eliminar la cuenta '{nombre}'?"):
+            eliminar_cuenta(nombre)
+            messagebox.showinfo("Éxito", "Cuenta eliminada correctamente.")
+            limpiar_campos()
             actualizar_tabla_cuentas()
-        except ValueError:
-            messagebox.showerror("Error", "El monto debe ser un número válido.")
 
-    btn_guardar = tk.Button(ventana_datos, text="Guardar", command=submit_datos, bg="#1c3847", fg="white", width=30, height=2)
-    btn_guardar.grid(row=3, column=0, columnspan=2, pady=10)
+    def editar_cuenta_gui():
+        if not validar_campos():
+            return
+        nombre = widgets['entry_nombre'].get().strip()
+        tipo = widgets['tipo_var'].get()
+        monto = float(widgets['entry_monto'].get().strip())
+        editar_cuenta(nombre, tipo, monto)
+        messagebox.showinfo("Éxito", "Cuenta actualizada correctamente.")
+        actualizar_tabla_cuentas()
+        limpiar_campos()
+
+    def submit_datos():
+        if not validar_campos():
+            return
+        nombre = widgets['entry_nombre'].get().strip()
+        tipo = widgets['tipo_var'].get()
+        monto = float(widgets['entry_monto'].get().strip())
+        guardar_cuenta(nombre, tipo, monto)
+        actualizar_tabla_cuentas()
+        limpiar_campos()
+
+    botones = [
+        ("Guardar", submit_datos, 3, 0),
+        ("Buscar Cuenta", buscar_cuenta_gui, 5, 1),
+        ("Eliminar Cuenta", eliminar_cuenta_gui, 6, 1),
+        ("Editar Cuenta", editar_cuenta_gui, 7, 1)
+    ]
+
+    for texto, comando, fila, columna in botones:
+        tk.Button(ventana_datos, text=texto, command=comando, bg="#1c3847", fg="white", width=30, height=2, font=("Arial", 10, "bold")).grid(row=fila, column=columna, columnspan=2, padx=10, pady=10)
 
     actualizar_tabla_cuentas()
 
@@ -141,10 +205,7 @@ def mostrar_balance_general():
 
     def borrar_contenido():
         try:
-            with crear_conexion() as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM cuentas_balance")
-                conn.commit()
+            ejecutar_db("DELETE FROM cuentas_balance")
             messagebox.showinfo("Éxito", "Se han borrado todos los registros correctamente.")
             ventana_tabla.destroy()
         except sqlite3.Error as e:
@@ -161,11 +222,13 @@ def mostrar_balance_general():
     for texto, fila, columna in etiquetas:
         tk.Label(ventana_tabla, text=texto, bg="#6399b1", font=("Arial", 14, "bold")).grid(row=fila, column=columna, padx=10, pady=10)
 
-    btn_borrar_contenido = tk.Button(ventana_tabla, text="Borrar Contenido", command=borrar_contenido, bg="#a83232", fg="white", width=30, height=2, font=("Arial", 10, "bold"))
-    btn_borrar_contenido.grid(row=0, column=2, padx=10, pady=10)
+    botones = [
+        ("Borrar Contenido", borrar_contenido, 0, 2),
+        ("Cerrar", cerrar_ventana, 2, 2)
+    ]
 
-    btn_cerrar = tk.Button(ventana_tabla, text="Cerrar", command=cerrar_ventana, bg="#a83232", fg="white", width=30, height=2, font=("Arial", 10, "bold"))
-    btn_cerrar.grid(row=2, column=2, padx=10, pady=10)
+    for texto, comando, fila, columna in botones:
+        tk.Button(ventana_tabla, text=texto, command=comando, bg="#a83232", fg="white", width=30, height=2, font=("Arial", 10, "bold")).grid(row=fila, column=columna, padx=10, pady=10)
 
     trees = {
         "Activos circulantes": (1, 0),
@@ -177,8 +240,8 @@ def mostrar_balance_general():
 
     for tipo, (fila, columna) in trees.items():
         tree = ttk.Treeview(ventana_tabla, columns=("Nombre", "Monto"), show='headings')
-        tree.heading("Nombre", text="Nombre de la Cuenta")
-        tree.heading("Monto", text="Monto")
+        for col in tree['columns']:
+            tree.heading(col, text=col)
         tree.grid(row=fila, column=columna, padx=10, pady=10)
         tree.tag_configure("total", background="#3a596b", foreground="white")
         trees[tipo] = tree
@@ -187,21 +250,19 @@ def mostrar_balance_general():
 
     totales = {tipo: 0 for tipo in trees.keys()}
     for nombre, tipo, monto in filas:
-        monto_formateado = f"{monto:,.2f}"
+        monto_formateado = formatear_numero(monto)
         trees[tipo].insert("", tk.END, values=(nombre, monto_formateado))
         totales[tipo] += monto
 
     for tipo, tree in trees.items():
-        total_formateado = f"{totales[tipo]:,.2f}"
+        total_formateado = formatear_numero(totales[tipo])
         tree.insert("", tk.END, values=(f"Total de {tipo.lower()}", total_formateado), tags=("total",))
 
     total_activos = totales["Activos circulantes"] + totales["Activos no circulantes"]
-    total_pasivos_patrimonio = (totales["Pasivos circulantes"] +
-                                totales["Pasivos no circulantes"] +
-                                totales["Capital"])
+    total_pasivos_patrimonio = sum(totales[tipo] for tipo in ["Pasivos circulantes", "Pasivos no circulantes", "Capital"])
 
-    tk.Label(ventana_tabla, bg="#6399b1", fg="#a83232", text=f"Total de activos = ${total_activos:,.2f}", font=("Arial", 14, "bold")).grid(row=6, column=0, columnspan=1, padx=10, pady=10)
-    tk.Label(ventana_tabla, bg="#6399b1", fg="#a83232", text=f"Total de pasivos + patrimonio = ${total_pasivos_patrimonio:,.2f}", font=("Arial", 14, "bold")).grid(row=6, column=1, columnspan=1, padx=10, pady=10)
+    tk.Label(ventana_tabla, bg="#6399b1", fg="#a83232", text=f"Total de activos = ${formatear_numero(total_activos)}", font=("Arial", 14, "bold")).grid(row=6, column=0, columnspan=1, padx=10, pady=10)
+    tk.Label(ventana_tabla, bg="#6399b1", fg="#a83232", text=f"Total de pasivos + patrimonio = ${formatear_numero(total_pasivos_patrimonio)}", font=("Arial", 14, "bold")).grid(row=6, column=1, columnspan=1, padx=10, pady=10)
 
 def menu_principal():
     ventana_principal = tk.Tk()
