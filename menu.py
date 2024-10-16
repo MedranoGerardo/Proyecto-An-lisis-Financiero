@@ -55,8 +55,12 @@ def obtener_cuentas_balancegeneral():
 def buscar_cuenta(nombre):
     return ejecutar_db("SELECT nombre, tipo, monto FROM cuentas_balance WHERE nombre = ?", (nombre,), fetchone=True)
 
-def editar_cuenta(nombre, tipo, monto):
-    ejecutar_db("UPDATE cuentas_balance SET tipo = ?, monto = ? WHERE nombre = ?", (tipo, monto, nombre))
+def editar_cuenta(nombre_original, nuevo_nombre, tipo, monto):
+    if nombre_original != nuevo_nombre and cuenta_existe(nuevo_nombre):
+        messagebox.showerror("Error", "Ya existe una cuenta con ese nombre.")
+        return False
+    ejecutar_db("UPDATE cuentas_balance SET nombre = ?, tipo = ?, monto = ? WHERE nombre = ?", (nuevo_nombre, tipo, monto, nombre_original))
+    return True
 
 def eliminar_cuenta(nombre):
     ejecutar_db("DELETE FROM cuentas_balance WHERE nombre = ?", (nombre,))
@@ -134,6 +138,8 @@ def crear_cuenta_balance_general():
             return False
         return True
 
+    nombre_original = tk.StringVar()
+
     def buscar_cuenta_gui():
         nombre = entry_buscarCuenta.get().strip()
         if not nombre:
@@ -146,6 +152,7 @@ def crear_cuenta_balance_general():
             widgets['tipo_var'].set(cuenta[1])
             widgets['entry_monto'].delete(0, tk.END)
             widgets['entry_monto'].insert(0, str(cuenta[2]))
+            nombre_original.set(cuenta[0])
             messagebox.showinfo("Éxito", "Cuenta encontrada.")
         else:
             messagebox.showerror("Error", "La cuenta no existe.")
@@ -164,13 +171,16 @@ def crear_cuenta_balance_general():
     def editar_cuenta_gui():
         if not validar_campos():
             return
-        nombre = widgets['entry_nombre'].get().strip()
+        nuevo_nombre = widgets['entry_nombre'].get().strip()
         tipo = widgets['tipo_var'].get()
         monto = float(widgets['entry_monto'].get().strip())
-        editar_cuenta(nombre, tipo, monto)
-        messagebox.showinfo("Éxito", "Cuenta actualizada correctamente.")
-        actualizar_tabla_cuentas()
-        limpiar_campos()
+        if editar_cuenta(nombre_original.get(), nuevo_nombre, tipo, monto):
+            messagebox.showinfo("Éxito", "Cuenta actualizada correctamente.")
+            actualizar_tabla_cuentas()
+            limpiar_campos()
+            nombre_original.set('')
+        else:
+            messagebox.showerror("Error", "No se pudo actualizar la cuenta.")
 
     def submit_datos():
         if not validar_campos():
