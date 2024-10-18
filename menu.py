@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
-import re
 import locale
 
 # Configurar el locale para formateo de números
@@ -60,45 +59,54 @@ def crear_cuenta_balance_general(frame_principal):
     for widget in frame_principal.winfo_children():
         widget.destroy()
 
-    contenido_frame = tk.Frame(frame_principal, bg="#6399b1")
-    contenido_frame.pack(expand=True)
+    # Crear un frame para los datos de entrada
+    frame_datos = tk.Frame(frame_principal, bg="#a7c7e7", bd=2, relief="groove")  # Sección con fondo azul claro
+    frame_datos.pack(padx=10, pady=10, fill="x")
 
     # Etiquetas y campos de entrada
-    tk.Label(contenido_frame, text="Nombre de la Cuenta:", bg="#6399b1", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=10, pady=10, sticky="e")
-    entry_nombre = tk.Entry(contenido_frame, width=30)
+    tk.Label(frame_datos, text="Nombre de la Cuenta:", bg="#a7c7e7", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=10, pady=10, sticky="e")
+    entry_nombre = tk.Entry(frame_datos, width=30)
     entry_nombre.grid(row=0, column=1, padx=10, pady=10)
 
-    tk.Label(contenido_frame, text="Tipo de Cuenta:", bg="#6399b1", font=("Arial", 12, "bold")).grid(row=1, column=0, padx=10, pady=10, sticky="e")
+    tk.Label(frame_datos, text="Tipo de Cuenta:", bg="#a7c7e7", font=("Arial", 12, "bold")).grid(row=1, column=0, padx=10, pady=10, sticky="e")
     tipo_var = tk.StringVar(value="Activos circulantes")
     opciones_tipo = ["Activos circulantes", "Activos no circulantes", "Pasivos circulantes", "Pasivos no circulantes", "Capital"]
-    tk.OptionMenu(contenido_frame, tipo_var, *opciones_tipo).grid(row=1, column=1, padx=10, pady=10, sticky="w")
+    tk.OptionMenu(frame_datos, tipo_var, *opciones_tipo).grid(row=1, column=1, padx=10, pady=10, sticky="w")
 
-    tk.Label(contenido_frame, text="Monto:", bg="#6399b1", font=("Arial", 12, "bold")).grid(row=2, column=0, padx=10, pady=10, sticky="e")
-    entry_monto = tk.Entry(contenido_frame, width=30)
+    tk.Label(frame_datos, text="Monto:", bg="#a7c7e7", font=("Arial", 12, "bold")).grid(row=2, column=0, padx=10, pady=10, sticky="e")
+    entry_monto = tk.Entry(frame_datos, width=30)
     entry_monto.grid(row=2, column=1, padx=10, pady=10)
 
     # Botón Guardar
-    tk.Button(contenido_frame, text="Guardar", command=lambda: guardar_cuenta(entry_nombre.get(), tipo_var.get(), float(entry_monto.get())), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=3, column=0, columnspan=2, pady=10)
+    tk.Button(frame_datos, text="Guardar", command=lambda: guardar_cuenta(entry_nombre.get(), tipo_var.get(), float(entry_monto.get())), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=3, column=0, columnspan=2, pady=10)
 
-    # Tabla para mostrar cuentas
-    tabla = ttk.Treeview(contenido_frame, columns=("Nombre", "Tipo", "Monto"), show='headings', height=10)
+    # Tabla para mostrar cuentas en otro frame
+    frame_tabla = tk.Frame(frame_principal, bg="#a7c7e7")
+    frame_tabla.pack(padx=10, pady=10, fill="x")
+
+    tabla = ttk.Treeview(frame_tabla, columns=("Nombre", "Tipo", "Monto"), show='headings', height=5)
     tabla.heading("Nombre", text="Nombre")
     tabla.heading("Tipo", text="Tipo")
     tabla.heading("Monto", text="Monto")
-    tabla.grid(row=4, column=0, columnspan=2, padx=20, pady=10, sticky="nsew")
+    tabla.pack(padx=10, pady=10, fill="x")
 
-    # Campo de entrada para búsqueda y botones adicionales
-    tk.Label(contenido_frame, text="Ingrese cuenta a buscar:", bg="#6399b1", font=("Arial", 12, "bold")).grid(row=5, column=0, padx=10, pady=10, sticky="e")
-    entry_buscar = tk.Entry(contenido_frame, width=25)
-    entry_buscar.grid(row=5, column=1, padx=10, pady=10)
+    # Crear otro frame para la búsqueda y los botones de acciones
+    frame_acciones = tk.Frame(frame_principal, bg="#a7c7e7", bd=2, relief="groove")
+    frame_acciones.pack(padx=10, pady=10, fill="x")
 
-    tk.Button(contenido_frame, text="Buscar Cuenta", command=lambda: buscar_cuenta_gui(entry_buscar.get(), tabla, entry_nombre, tipo_var, entry_monto), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=6, column=0, padx=10, pady=10)
-    tk.Button(contenido_frame, text="Eliminar Cuenta", command=lambda: eliminar_cuenta_gui(entry_nombre.get(), tabla), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=6, column=1, padx=10, pady=10)
-    tk.Button(contenido_frame, text="Editar Cuenta", command=lambda: editar_cuenta_gui(entry_nombre.get(), tipo_var.get(), float(entry_monto.get()), tabla), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=7, column=0, columnspan=2, pady=10)
+    # Campo de entrada y etiqueta para búsqueda
+    tk.Label(frame_acciones, text="Ingrese cuenta a buscar:", bg="#a7c7e7", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=10, pady=10, sticky="e")
+    entry_buscar = tk.Entry(frame_acciones, width=25)
+    entry_buscar.grid(row=0, column=1, padx=10, pady=10)
+
+    # Colocar los botones en la misma línea que el campo de entrada
+    tk.Button(frame_acciones, text="Buscar Cuenta", command=lambda: buscar_cuenta_gui(entry_buscar.get(), tabla, entry_nombre, tipo_var, entry_monto), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=0, column=2, padx=10)
+    tk.Button(frame_acciones, text="Eliminar Cuenta", command=lambda: eliminar_cuenta_gui(entry_nombre.get(), tabla), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=0, column=3, padx=10)
+    tk.Button(frame_acciones, text="Editar Cuenta", command=lambda: editar_cuenta_gui(entry_nombre.get(), tipo_var.get(), float(entry_monto.get()), tabla), bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=0, column=4, padx=10)
 
     actualizar_tabla_cuentas(tabla)  # Llenar tabla al cargar
 
-# Funciones para los botones adicionales
+# Funciones adicionales
 def buscar_cuenta_gui(nombre, tabla, entry_nombre, tipo_var, entry_monto):
     cuenta = ejecutar_db("SELECT nombre, tipo, monto FROM cuentas_balance WHERE nombre = ?", (nombre,), fetchone=True)
     if cuenta:
@@ -126,16 +134,12 @@ def editar_cuenta_gui(nombre, tipo, monto, tabla):
     else:
         messagebox.showerror("Error", "La cuenta no existe.")
 
-# Función para mostrar el Balance General
 def mostrar_balance_general(frame_principal):
     for widget in frame_principal.winfo_children():
         widget.destroy()
 
-    contenido_frame = tk.Frame(frame_principal, bg="#6399b1")
+    contenido_frame = tk.Frame(frame_principal, bg="#f0e68c")
     contenido_frame.pack(expand=True, fill="both", padx=20, pady=20)
-
-    boton_borrar = tk.Button(contenido_frame, text="Borrar Contenido", command=lambda: borrar_contenido(tablas), bg="#a83232", fg="white", width=20, height=2, font=("Arial", 10, "bold"))
-    boton_borrar.grid(row=0, column=1, pady=(10, 20))
 
     secciones = {
         "Activos circulantes": (1, 0),
@@ -147,12 +151,11 @@ def mostrar_balance_general(frame_principal):
 
     tablas = {}
     for tipo, (fila, columna) in secciones.items():
-        tk.Label(contenido_frame, text=tipo.upper(), bg="#6399b1", font=("Arial", 14, "bold")).grid(row=fila, column=columna, padx=10, pady=10)
+        tk.Label(contenido_frame, text=tipo.upper(), bg="#f0e68c", font=("Arial", 14, "bold")).grid(row=fila, column=columna, padx=10, pady=10)
         tree = ttk.Treeview(contenido_frame, columns=("Nombre", "Monto"), show="headings", height=5)
         tree.heading("Nombre", text="Nombre")
         tree.heading("Monto", text="Monto")
         tree.grid(row=fila + 1, column=columna, padx=10, pady=10)
-        tree.tag_configure("total", background="#3a596b", foreground="white")
         tablas[tipo] = tree
 
     cargar_datos_balance(tablas)
@@ -169,14 +172,7 @@ def cargar_datos_balance(tablas):
     for tipo, total in totales.items():
         tablas[tipo].insert("", tk.END, values=(f"Total de {tipo.lower()}", formatear_numero(total)), tags=("total",))
 
-def borrar_contenido(tablas):
-    if messagebox.askyesno("Confirmar", "¿Está seguro de borrar todos los registros?"):
-        ejecutar_db("DELETE FROM cuentas_balance")
-        for tree in tablas.values():
-            for item in tree.get_children():
-                tree.delete(item)
-        messagebox.showinfo("Éxito", "Todos los registros han sido borrados correctamente.")
-
+# Función del menú principal
 def menu_principal():
     ventana_principal = tk.Tk()
     ventana_principal.title("Sistema de Contabilidad")
@@ -186,11 +182,18 @@ def menu_principal():
     ventana_principal.configure(bg="#6399b1")
     ventana_principal.resizable(True, True)
 
-    frame_menu = tk.Frame(ventana_principal, bg="#6399b1", width=200)
-    frame_menu.pack(side="left", fill="y", padx=20)
+    ventana_principal.grid_rowconfigure(0, weight=1)
+    ventana_principal.grid_columnconfigure(0, weight=1)  
+    ventana_principal.grid_columnconfigure(1, weight=4)
 
-    frame_principal = tk.Frame(ventana_principal, bg="#6399b1")
-    frame_principal.pack(side="right", fill="both", expand=True)
+    # Contenedor izquierdo (menú) con tamaño fijo
+    frame_menu = tk.Frame(ventana_principal, bg="#6399b1", width=250)
+    frame_menu.grid(row=0, column=0, sticky="ns")
+    frame_menu.grid_propagate(False)  # Desactivar la propagación del tamaño
+
+    # Contenedor derecho (principal)
+    frame_principal = tk.Frame(ventana_principal, bg="#ffffff")
+    frame_principal.grid(row=0, column=1, sticky="nsew")
 
     opciones = [
         ("Crear Cuenta - Estado de Resultado", mostrar_mensaje_en_desarrollo),
