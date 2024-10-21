@@ -4,7 +4,7 @@ import sqlite3
 import re
 import locale
 
-# Configurar el locale para usar punto como separador decimal y coma como separador de miles
+# Configuración de locale
 locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
 # Funciones de validación
@@ -65,50 +65,93 @@ def editar_cuenta(nombre_original, nuevo_nombre, tipo, monto):
 def eliminar_cuenta(nombre):
     ejecutar_db("DELETE FROM cuentas_balance WHERE nombre = ?", (nombre,))
 
-# Función para formatear números con punto decimal y coma como separador de miles
+# Funciones de formateo de números
 def formatear_numero(numero):
     return locale.format_string('%.2f', numero, grouping=True)
 
-# Función para desformatear números (quitar comas)
 def desformatear_numero(numero_str):
     return numero_str.replace(',', '')
 
 # Funciones de la interfaz gráfica
-def crear_cuenta_balance_general():
-    ventana_datos = tk.Toplevel()
-    ventana_datos.title("Crear Cuenta - Balance General")
-    ventana_datos.geometry("620x650")
-    ventana_datos.configure(bg="#6399b1")
-    ventana_datos.resizable(False, False)
+def crear_cuentas_Estados_Financieros(frame):
+    for widget in frame.winfo_children():
+        widget.destroy()
 
+    frame.configure(bg="#b8cee2")
+
+    # Frame principal
+    main_frame = tk.Frame(frame, bg="#b8cee2")
+    main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+    # Frame para los campos de entrada (parte superior)
+    input_frame = tk.Frame(main_frame, bg="#b8cee2", relief="raised", borderwidth=1)
+    input_frame.pack(fill=tk.X, pady=(0, 20))
+
+    # Campos de entrada
     campos = [
-        ("Nombre de la Cuenta:", "entry_nombre", None),
-        ("Tipo de Cuenta:", "tipo_var", ["Activos circulantes", "Activos no circulantes", "Pasivos circulantes", "Pasivos no circulantes", "Capital"]),
-        ("Monto:", "entry_monto", None)
+        ("Nombre de la Cuenta:", "entry_nombre"),
+        ("Tipo de Cuenta:", "tipo_var"),
+        ("Monto:", "entry_monto")
     ]
 
     widgets = {}
-    for i, (label_text, widget_name, options) in enumerate(campos):
-        tk.Label(ventana_datos, bg="#6399b1", font=("Arial", 10, "bold"), width=18, anchor="w", text=label_text).grid(row=i, column=0, padx=10, pady=10)
-        if options:
-            var = tk.StringVar(value=options[0])
-            widget = tk.OptionMenu(ventana_datos, var, *options)
-            widget.config(width=23)
+    for i, (label_text, widget_name) in enumerate(campos):
+        tk.Label(input_frame, text=label_text, bg="#b8cee2", font=("Arial", 10)).grid(row=i, column=0, padx=10, pady=10, sticky="e")
+        if widget_name == "tipo_var":
+            var = tk.StringVar(value="Activos circulantes")
+            widget = ttk.Combobox(input_frame, textvariable=var, values=["Activos circulantes", "Activos no circulantes", "Pasivos circulantes", "Pasivos no circulantes", "Capital"], state="readonly", width=28)
             widgets[widget_name] = var
         else:
-            widget = tk.Entry(ventana_datos, width=30)
+            widget = tk.Entry(input_frame, width=30)
             widgets[widget_name] = widget
-        widget.grid(row=i, column=1, padx=10, pady=10)
+        widget.grid(row=i, column=1, padx=10, pady=10, sticky="w")
 
-    tabla = ttk.Treeview(ventana_datos, columns=("Nombre", "Tipo", "Monto"), show='headings')
+    # Frame para la tabla (parte central)
+    table_frame = tk.Frame(main_frame, bg="white", relief="raised", borderwidth=1)
+    table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+
+    # Tabla de cuentas
+    tabla = ttk.Treeview(table_frame, columns=("Nombre", "Tipo", "Monto"), show='headings', height=5)
     for col in tabla['columns']:
         tabla.heading(col, text=col)
-    tabla.grid(row=4, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+        tabla.column(col, width=150)
+    tabla.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-    tk.label_buscarCuenta = tk.Label(ventana_datos, bg="#6399b1", font=("Arial", 10, "bold"), width=20, anchor="w", text="Ingrese cuenta a buscar:")
-    tk.label_buscarCuenta.grid(row=5, column=0, padx=0, pady=0)
-    entry_buscarCuenta = tk.Entry(ventana_datos, width=25)
-    entry_buscarCuenta.grid(row=6, column=0, padx=0, pady=0)
+    # Frame para la búsqueda y botones (parte inferior)
+    search_frame = tk.Frame(main_frame, bg="#b8cee2", relief="raised", borderwidth=1)
+    search_frame.pack(fill=tk.X)
+
+    tk.Label(search_frame, text="Ingrese cuenta a buscar:", bg="#b8cee2", font=("Arial", 10)).pack(side=tk.LEFT, padx=(10, 5), pady=10)
+    entry_buscarCuenta = tk.Entry(search_frame, width=30)
+    entry_buscarCuenta.pack(side=tk.LEFT, padx=5, pady=10)
+
+    botones = [
+        ("Buscar Cuenta", lambda: buscar_cuenta_gui()),
+        ("Eliminar Cuenta", lambda: eliminar_cuenta_gui()),
+        ("Editar Cuenta", lambda: editar_cuenta_gui())
+    ]
+
+    for texto, comando in botones:
+        tk.Button(search_frame, text=texto, command=comando, bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5, pady=10)
+
+    nombre_original = tk.StringVar()
+
+    def buscar_cuenta_gui():
+        nombre = entry_buscarCuenta.get().strip()
+        if not nombre:
+            messagebox.showerror("Error", "Ingrese un nombre de cuenta para buscar.")
+            return
+        cuenta = buscar_cuenta(nombre)
+        if cuenta:
+            widgets['entry_nombre'].delete(0, tk.END)
+            widgets['entry_nombre'].insert(0, cuenta[0])
+            widgets['tipo_var'].set(cuenta[1])
+            widgets['entry_monto'].delete(0, tk.END)
+            widgets['entry_monto'].insert(0, str(cuenta[2]))
+            nombre_original.set(cuenta[0])
+            messagebox.showinfo("Éxito", "Cuenta encontrada.")
+        else:
+            messagebox.showerror("Error", "La cuenta no existe.")
 
     def actualizar_tabla_cuentas():
         for fila in tabla.get_children():
@@ -137,25 +180,6 @@ def crear_cuenta_balance_general():
             messagebox.showerror("Error", "El monto debe ser un número con máximo dos decimales.")
             return False
         return True
-
-    nombre_original = tk.StringVar()
-
-    def buscar_cuenta_gui():
-        nombre = entry_buscarCuenta.get().strip()
-        if not nombre:
-            messagebox.showerror("Error", "Ingrese un nombre de cuenta para buscar.")
-            return
-        cuenta = buscar_cuenta(nombre)
-        if cuenta:
-            widgets['entry_nombre'].delete(0, tk.END)
-            widgets['entry_nombre'].insert(0, cuenta[0])
-            widgets['tipo_var'].set(cuenta[1])
-            widgets['entry_monto'].delete(0, tk.END)
-            widgets['entry_monto'].insert(0, str(cuenta[2]))
-            nombre_original.set(cuenta[0])
-            messagebox.showinfo("Éxito", "Cuenta encontrada.")
-        else:
-            messagebox.showerror("Error", "La cuenta no existe.")
 
     def eliminar_cuenta_gui():
         nombre = widgets['entry_nombre'].get().strip()
@@ -192,105 +216,96 @@ def crear_cuenta_balance_general():
         actualizar_tabla_cuentas()
         limpiar_campos()
 
-    botones = [
-        ("Guardar", submit_datos, 3, 0),
-        ("Buscar Cuenta", buscar_cuenta_gui, 5, 1),
-        ("Eliminar Cuenta", eliminar_cuenta_gui, 6, 1),
-        ("Editar Cuenta", editar_cuenta_gui, 7, 1)
-    ]
-
-    for texto, comando, fila, columna in botones:
-        tk.Button(ventana_datos, text=texto, command=comando, bg="#1c3847", fg="white", width=30, height=2, font=("Arial", 10, "bold")).grid(row=fila, column=columna, columnspan=2, padx=10, pady=10)
+    tk.Button(input_frame, text="Guardar", command=submit_datos, bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=3, column=1, pady=10, sticky="w")
+    botones_frame = tk.Frame(frame, bg="#b8cee2")
+    botones_frame.pack(fill=tk.X, pady=10)
 
     actualizar_tabla_cuentas()
 
-def mostrar_balance_general():
-    ventana_tabla = tk.Toplevel()
-    ventana_tabla.title("Balance General")
-    ventana_tabla.configure(bg="#6399b1")
-    ventana_tabla.resizable(False, False)
+def mostrar_balance_general(frame):
+    for widget in frame.winfo_children():
+        widget.destroy()
 
-    def cerrar_ventana():
-        ventana_tabla.destroy()
+    frame.configure(bg="#f0f0aa")
 
-    def borrar_contenido():
-        try:
-            ejecutar_db("DELETE FROM cuentas_balance")
-            messagebox.showinfo("Éxito", "Se han borrado todos los registros correctamente.")
-            ventana_tabla.destroy()
-        except sqlite3.Error as e:
-            messagebox.showerror("Error", f"No se pudo borrar los registros: {e}")
-
-    etiquetas = [
+    categorias = [
         ("ACTIVOS CIRCULANTES", 0, 0),
-        ("ACTIVOS NO CIRCULANTES", 2, 0),
+        ("ACTIVOS NO CIRCULANTES", 1, 0),
         ("PASIVOS CIRCULANTES", 0, 1),
-        ("PASIVOS NO CIRCULANTES", 2, 1),
-        ("PATRIMONIO", 4, 1)
+        ("PASIVOS NO CIRCULANTES", 1, 1),
+        ("CAPITAL", 2, 1)
     ]
 
-    for texto, fila, columna in etiquetas:
-        tk.Label(ventana_tabla, text=texto, bg="#6399b1", font=("Arial", 14, "bold")).grid(row=fila, column=columna, padx=10, pady=10)
+    trees = {}
+    for titulo, row, col in categorias:
+        frame_categoria = tk.Frame(frame, bg="#f0f0aa")
+        frame_categoria.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
 
-    botones = [
-        ("Borrar Contenido", borrar_contenido, 0, 2),
-        ("Cerrar", cerrar_ventana, 2, 2)
-    ]
+        tk.Label(frame_categoria, text=titulo, bg="#f0f0aa", font=("Arial", 12, "bold")).pack()
 
-    for texto, comando, fila, columna in botones:
-        tk.Button(ventana_tabla, text=texto, command=comando, bg="#a83232", fg="white", width=30, height=2, font=("Arial", 10, "bold")).grid(row=fila, column=columna, padx=10, pady=10)
+        tree = ttk.Treeview(frame_categoria, columns=("Nombre", "Monto"), show='headings', height=5)
+        tree.heading("Nombre", text="Nombre")
+        tree.heading("Monto", text="Monto")
+        tree.column("Nombre", width=170)
+        tree.column("Monto", width=100)
+        tree.pack(fill=tk.BOTH, expand=True)
 
-    trees = {
-        "Activos circulantes": (1, 0),
-        "Activos no circulantes": (3, 0),
-        "Pasivos circulantes": (1, 1),
-        "Pasivos no circulantes": (3, 1),
-        "Capital": (5, 1)
-    }
-
-    for tipo, (fila, columna) in trees.items():
-        tree = ttk.Treeview(ventana_tabla, columns=("Nombre", "Monto"), show='headings')
-        for col in tree['columns']:
-            tree.heading(col, text=col)
-        tree.grid(row=fila, column=columna, padx=10, pady=10)
-        tree.tag_configure("total", background="#3a596b", foreground="white")
-        trees[tipo] = tree
+        trees[titulo.lower().replace(" ", "_")] = tree
 
     filas = obtener_cuentas_balancegeneral()
+    totales = {categoria: 0 for categoria in trees.keys()}
 
-    totales = {tipo: 0 for tipo in trees.keys()}
     for nombre, tipo, monto in filas:
+        categoria = tipo.lower().replace(" ", "_")
         monto_formateado = formatear_numero(monto)
-        trees[tipo].insert("", tk.END, values=(nombre, monto_formateado))
-        totales[tipo] += monto
+        trees[categoria].insert("", tk.END, values=(nombre, monto_formateado))
+        totales[categoria] += monto
 
     for tipo, tree in trees.items():
         total_formateado = formatear_numero(totales[tipo])
         tree.insert("", tk.END, values=(f"Total de {tipo.lower()}", total_formateado), tags=("total",))
+        tree.tag_configure("total", background="#6399b1", foreground="white")
 
-    total_activos = totales["Activos circulantes"] + totales["Activos no circulantes"]
-    total_pasivos_patrimonio = sum(totales[tipo] for tipo in ["Pasivos circulantes", "Pasivos no circulantes", "Capital"])
+    total_activos = totales["activos_circulantes"] + totales["activos_no_circulantes"]
+    total_pasivos_patrimonio = sum(totales[tipo] for tipo in ["pasivos_circulantes", "pasivos_no_circulantes", "capital"])
 
-    tk.Label(ventana_tabla, bg="#6399b1", fg="#a83232", text=f"Total de activos = ${formatear_numero(total_activos)}", font=("Arial", 14, "bold")).grid(row=6, column=0, columnspan=1, padx=10, pady=10)
-    tk.Label(ventana_tabla, bg="#6399b1", fg="#a83232", text=f"Total de pasivos + patrimonio = ${formatear_numero(total_pasivos_patrimonio)}", font=("Arial", 14, "bold")).grid(row=6, column=1, columnspan=1, padx=10, pady=10)
+    tk.Label(frame, bg="#f0f0aa", fg="#a83232", text=f"Total de activos = ${formatear_numero(total_activos)}", font=("Arial", 14, "bold")).grid(row=3, column=0, columnspan=1, padx=10, pady=10)
+    tk.Label(frame, bg="#f0f0aa", fg="#a83232", text=f"Total de pasivos + patrimonio = ${formatear_numero(total_pasivos_patrimonio)}", font=("Arial", 14, "bold")).grid(row=3, column=1, columnspan=1, padx=10, pady=10)
+
+#Cerrar la aplicación
+def cerrar_aplicacion(ventana):
+    ventana.quit()
+    ventana.destroy()
+    import sys
+    sys.exit()
 
 def menu_principal():
     ventana_principal = tk.Tk()
     ventana_principal.title("Sistema de Contabilidad")
-    ventana_principal.geometry("400x360")
+    ventana_principal.geometry("1200x600")
     ventana_principal.configure(bg="#6399b1")
     ventana_principal.resizable(False, False)
 
+    frame_botones = tk.Frame(ventana_principal, bg="#6399b1", width=290, height=400)
+    frame_botones.pack(side=tk.LEFT, fill=tk.Y)
+    frame_botones.pack_propagate(False)
+
+    frame_contenido = tk.Frame(ventana_principal, bg="#b8cee2")
+    frame_contenido.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+
     botones = [
-        ("Crear Cuenta - Estado de Resultado", None),
-        ("Crear Cuenta - Balance General", crear_cuenta_balance_general),
+        ("Ver catalogo de cuentas", None),
+        ("Crear Cuenta - Para catalogo de cuentas", lambda: crear_cuentas_Estados_Financieros(frame_contenido)),
         ("Mostrar Estado de Resultado", None),
-        ("Mostrar Balance General", mostrar_balance_general),
-        ("Salir", ventana_principal.quit)
+        ("Mostrar Balance General", lambda: mostrar_balance_general(frame_contenido)),
+        ("Salir", lambda: cerrar_aplicacion(ventana_principal))
     ]
 
     for texto, comando in botones:
         color = "#a83232" if texto == "Salir" else "#1c3847"
-        tk.Button(ventana_principal, text=texto, command=comando, bg=color, fg="white", width=30, height=2, font=("Arial", 12, "bold")).pack(pady=10)
+        tk.Button(frame_botones, text=texto, command=comando, bg=color, fg="white", width=33, height=2, font=("Arial", 10, "bold")).pack(pady=5)
 
+    ventana_principal.protocol("WM_DELETE_WINDOW", lambda: cerrar_aplicacion(ventana_principal))
     ventana_principal.mainloop()
+
+menu_principal()
