@@ -77,14 +77,14 @@ def crear_cuentas_Estados_Financieros(frame):
     for widget in frame.winfo_children():
         widget.destroy()
 
-    frame.configure(bg="#b8cee2")
+    frame.configure(bg="#E0F2FE")  # Fondo azul claro
 
     # Frame principal
-    main_frame = tk.Frame(frame, bg="#b8cee2")
+    main_frame = tk.Frame(frame, bg="#E0F2FE")
     main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
     # Frame para los campos de entrada (parte superior)
-    input_frame = tk.Frame(main_frame, bg="#b8cee2", relief="raised", borderwidth=1)
+    input_frame = tk.Frame(main_frame, bg="#E0F2FE", relief="raised", borderwidth=1)
     input_frame.pack(fill=tk.X, pady=(0, 20))
 
     # Campos de entrada
@@ -96,18 +96,18 @@ def crear_cuentas_Estados_Financieros(frame):
 
     widgets = {}
     for i, (label_text, widget_name) in enumerate(campos):
-        tk.Label(input_frame, text=label_text, bg="#b8cee2", font=("Arial", 10)).grid(row=i, column=0, padx=10, pady=10, sticky="e")
+        tk.Label(input_frame, text=label_text, bg="#E0F2FE", font=("Arial", 11, "bold"), fg="#1E3A8A").grid(row=i, column=0, padx=10, pady=10, sticky="e")
         if widget_name == "tipo_var":
             var = tk.StringVar(value="Activos circulantes")
             widget = ttk.Combobox(input_frame, textvariable=var, values=["Activos circulantes", "Activos no circulantes", "Pasivos circulantes", "Pasivos no circulantes", "Capital"], state="readonly", width=28)
             widgets[widget_name] = var
         else:
-            widget = tk.Entry(input_frame, width=30)
+            widget = tk.Entry(input_frame, width=30, bg="#F3F4F6")  # Fondo gris suave para entradas
             widgets[widget_name] = widget
         widget.grid(row=i, column=1, padx=10, pady=10, sticky="w")
 
     # Frame para la tabla (parte central)
-    table_frame = tk.Frame(main_frame, bg="white", relief="raised", borderwidth=1)
+    table_frame = tk.Frame(main_frame, bg="#E0F2FE", relief="raised", borderwidth=1)
     table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
 
     # Tabla de cuentas
@@ -118,11 +118,11 @@ def crear_cuentas_Estados_Financieros(frame):
     tabla.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
     # Frame para la búsqueda y botones (parte inferior)
-    search_frame = tk.Frame(main_frame, bg="#b8cee2", relief="raised", borderwidth=1)
+    search_frame = tk.Frame(main_frame, bg="#E0F2FE", relief="raised", borderwidth=1)
     search_frame.pack(fill=tk.X)
 
-    tk.Label(search_frame, text="Ingrese cuenta a buscar:", bg="#b8cee2", font=("Arial", 10)).pack(side=tk.LEFT, padx=(10, 5), pady=10)
-    entry_buscarCuenta = tk.Entry(search_frame, width=30)
+    tk.Label(search_frame, text="Ingrese cuenta a buscar:", bg="#E0F2FE", font=("Arial", 10, "bold"), fg="#1E3A8A").pack(side=tk.LEFT, padx=(10, 5), pady=10)
+    entry_buscarCuenta = tk.Entry(search_frame, width=30, bg="#F3F4F6")
     entry_buscarCuenta.pack(side=tk.LEFT, padx=5, pady=10)
 
     botones = [
@@ -132,7 +132,7 @@ def crear_cuentas_Estados_Financieros(frame):
     ]
 
     for texto, comando in botones:
-        tk.Button(search_frame, text=texto, command=comando, bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5, pady=10)
+        tk.Button(search_frame, text=texto, command=comando, bg="#1E3A8A", fg="white", activebackground="#00587A", width=15, height=1, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5, pady=10)
 
     nombre_original = tk.StringVar()
 
@@ -216,8 +216,8 @@ def crear_cuentas_Estados_Financieros(frame):
         actualizar_tabla_cuentas()
         limpiar_campos()
 
-    tk.Button(input_frame, text="Guardar", command=submit_datos, bg="#1c3847", fg="white", width=15, height=1, font=("Arial", 10, "bold")).grid(row=3, column=1, pady=10, sticky="w")
-    botones_frame = tk.Frame(frame, bg="#b8cee2")
+    tk.Button(input_frame, text="Guardar", command=submit_datos, bg="#1E3A8A", fg="white", activebackground="#00587A", width=15, height=1, font=("Arial", 10, "bold")).grid(row=3, column=1, pady=10, sticky="w")
+    botones_frame = tk.Frame(frame, bg="#E0F2FE")
     botones_frame.pack(fill=tk.X, pady=10)
 
     actualizar_tabla_cuentas()
@@ -226,7 +226,7 @@ def mostrar_balance_general(frame):
     for widget in frame.winfo_children():
         widget.destroy()
 
-    frame.configure(bg="#f0f0aa")
+    frame.configure(bg="#E0F2FE")
 
     categorias = [
         ("ACTIVOS CIRCULANTES", 0, 0),
@@ -238,10 +238,10 @@ def mostrar_balance_general(frame):
 
     trees = {}
     for titulo, row, col in categorias:
-        frame_categoria = tk.Frame(frame, bg="#f0f0aa")
+        frame_categoria = tk.Frame(frame, bg="#E0F2FE")
         frame_categoria.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
 
-        tk.Label(frame_categoria, text=titulo, bg="#f0f0aa", font=("Arial", 12, "bold")).pack()
+        tk.Label(frame_categoria, text=titulo, bg="#E0F2FE", font=("Arial", 12, "bold"), fg="#1E3A8A").pack()
 
         tree = ttk.Treeview(frame_categoria, columns=("Nombre", "Monto"), show='headings', height=5)
         tree.heading("Nombre", text="Nombre")
@@ -264,13 +264,13 @@ def mostrar_balance_general(frame):
     for tipo, tree in trees.items():
         total_formateado = formatear_numero(totales[tipo])
         tree.insert("", tk.END, values=(f"Total de {tipo.lower()}", total_formateado), tags=("total",))
-        tree.tag_configure("total", background="#6399b1", foreground="white")
+        tree.tag_configure("total", background="#1E3A8A", foreground="white")
 
     total_activos = totales["activos_circulantes"] + totales["activos_no_circulantes"]
     total_pasivos_patrimonio = sum(totales[tipo] for tipo in ["pasivos_circulantes", "pasivos_no_circulantes", "capital"])
 
-    tk.Label(frame, bg="#f0f0aa", fg="#a83232", text=f"Total de activos = ${formatear_numero(total_activos)}", font=("Arial", 14, "bold")).grid(row=3, column=0, columnspan=1, padx=10, pady=10)
-    tk.Label(frame, bg="#f0f0aa", fg="#a83232", text=f"Total de pasivos + patrimonio = ${formatear_numero(total_pasivos_patrimonio)}", font=("Arial", 14, "bold")).grid(row=3, column=1, columnspan=1, padx=10, pady=10)
+    tk.Label(frame, bg="#E0F2FE", fg="#a83232", text=f"Total de activos = ${formatear_numero(total_activos)}", font=("Arial", 14, "bold")).grid(row=3, column=0, columnspan=1, padx=10, pady=10)
+    tk.Label(frame, bg="#E0F2FE", fg="#a83232", text=f"Total de pasivos + patrimonio = ${formatear_numero(total_pasivos_patrimonio)}", font=("Arial", 14, "bold")).grid(row=3, column=1, columnspan=1, padx=10, pady=10)
 
 #Cerrar la aplicación
 def cerrar_aplicacion(ventana):
@@ -283,14 +283,14 @@ def menu_principal():
     ventana_principal = tk.Tk()
     ventana_principal.title("Sistema de Contabilidad")
     ventana_principal.geometry("1200x600")
-    ventana_principal.configure(bg="#6399b1")
-    ventana_principal.resizable(False, False)
+    ventana_principal.configure(bg="#E0F2FE")  # Fondo azul claro
+    ventana_principal.resizable(True, True)
 
-    frame_botones = tk.Frame(ventana_principal, bg="#6399b1", width=290, height=400)
+    frame_botones = tk.Frame(ventana_principal, bg="#1E3A8A", width=290, height=400)  # Azul oscuro para menú lateral
     frame_botones.pack(side=tk.LEFT, fill=tk.Y)
     frame_botones.pack_propagate(False)
 
-    frame_contenido = tk.Frame(ventana_principal, bg="#b8cee2")
+    frame_contenido = tk.Frame(ventana_principal, bg="#E0F2FE")  # Fondo azul claro
     frame_contenido.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
     botones = [
@@ -302,10 +302,11 @@ def menu_principal():
     ]
 
     for texto, comando in botones:
-        color = "#a83232" if texto == "Salir" else "#1c3847"
-        tk.Button(frame_botones, text=texto, command=comando, bg=color, fg="white", width=33, height=2, font=("Arial", 10, "bold")).pack(pady=5)
+        color = "#DC2626" if texto == "Salir" else "#1E3A8A"  
+        tk.Button(frame_botones, text=texto, command=comando, bg=color, fg="white", activebackground="#00587A", width=33, height=2, font=("Arial", 10, "bold")).pack(pady=5)
 
     ventana_principal.protocol("WM_DELETE_WINDOW", lambda: cerrar_aplicacion(ventana_principal))
     ventana_principal.mainloop()
 
-menu_principal()
+if __name__ == "__main__":
+    menu_principal() 
