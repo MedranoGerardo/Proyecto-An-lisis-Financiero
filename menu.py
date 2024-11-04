@@ -1,17 +1,25 @@
+import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
-import re
-import locale
 from dataclasses import dataclass
 from typing import Optional
+import os
+from tkinter import filedialog
+
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from tkinter import messagebox
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
+# Funcion para validar que la cadena tenga solo letras
+def validar_solo_letras(cadena):
+    return all(caracter.isalpha() or caracter.isspace() for caracter in cadena)
 
-# Configuración de locale
-locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+#Funcion para validar que la cadena tenga dos decimales
+def validar_dos_decimales(cadena):
+    return re.match(r'^\d+(\.\d{1,2})?$', cadena) is not None
 
 @dataclass
 class Account:
@@ -19,21 +27,113 @@ class Account:
     name: str
     parent_code: Optional[str]
 
-# Funciones de validación
-def validar_solo_letras(cadena):
-    return all(caracter.isalpha() or caracter.isspace() for caracter in cadena)
+class AccountCatalog:
+    def __init__(self, db_path: str):
+        self.conn = sqlite3.connect(db_path)
+        self.create_table()
+        self.initialize_main_accounts()
 
-#NO SE UTILIZA
-def validar_dos_decimales(cadena):
-    return re.match(r'^\d+(\.\d{1,2})?$', cadena) is not None
+    def create_table(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS accounts (
+            code TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            parent_code TEXT,
+            FOREIGN KEY (parent_code) REFERENCES accounts (code)
+        )
+        ''')
+        self.conn.commit()
 
-#NO SE UTILIZA
-# Funciones de formateo de números
-def formatear_numero(numero):
-    return locale.format_string('%.2f', numero, grouping=True)
+    def initialize_main_accounts(self):
+        main_accounts = [
+            ("1", "ACTIVO", None),
+            ("2", "PASIVO", None),
+            ("3", "PATRIMONIO", None),
+            ("4", "CUENTAS DE RESULTADO DEUDORAS", None),
+            ("5", "CUENTAS DE RESULTADO ACREEDORAS", None),
+            ("6", "CUENTA DE PUENTE DE CIERRE", None)
+        ]
 
-def desformatear_numero(numero_str):
-    return numero_str.replace(',', '')
+        cursor = self.conn.cursor()
+        for code, name, parent in main_accounts:
+            cursor.execute('''
+            INSERT OR IGNORE INTO accounts (code, name, parent_code)
+            VALUES (?, ?, ?)
+            ''', (code, name, parent))
+        self.conn.commit()
+
+    def validate_account_code(self, code: str, parent_code: str) -> bool:
+        if not code.isdigit():
+            return False
+
+        if parent_code and not code.startswith(parent_code):
+            return False
+
+        if len(code) not in [1, 2, 4, 6, 8]:
+            return False
+
+        return True
+
+    def create_account(self, code: str, name: str, parent_code: str) -> bool:
+        try:
+            if not self.validate_account_code(code, parent_code):
+                return False
+
+            cursor = self.conn.cursor()
+            cursor.execute('''
+            INSERT INTO accounts (code, name, parent_code)
+            VALUES (?, ?, ?)
+            ''', (code, name, parent_code if parent_code else None))
+
+            self.conn.commit()
+            return True
+
+        except Exception as e:
+            print(f"Error al crear la cuenta: {e}")
+            return False
+
+    def buscar_cuenta_por_codigo(self, code: str) -> Optional[Account]:
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT code, name, parent_code FROM accounts WHERE code = ?', (code,))
+        row = cursor.fetchone()
+        if row:
+            return Account(code=row[0], name=row[1], parent_code=row[2])
+        return None
+
+    def editar_cuenta(self, codigo_original: str, nuevo_codigo: str, nuevo_nombre: str, nuevo_padre: str) -> bool:
+        try:
+            if nuevo_padre and not self.validate_account_code(nuevo_codigo, nuevo_padre):
+                return False
+
+            cursor = self.conn.cursor()
+            cursor.execute('''
+            UPDATE accounts
+            SET code = ?, name = ?, parent_code = ?
+            WHERE code = ?
+            ''', (nuevo_codigo, nuevo_nombre, nuevo_padre if nuevo_padre else None, codigo_original))
+
+            self.conn.commit()
+            return cursor.rowcount > 0
+
+        except Exception as e:
+            print(f"Error al editar la cuenta: {e}")
+            return False
+
+    def eliminar_cuenta(self, code: str) -> bool:
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute('DELETE FROM accounts WHERE code = ?', (code,))
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error al eliminar la cuenta: {e}")
+            return False
+
+    def get_all_accounts(self):
+        cursor = self.conn.cursor()
+        cursor.execute('SELECT code, name, parent_code FROM accounts ORDER BY code')
+        return [Account(code, name, parent_code) for code, name, parent_code in cursor.fetchall()]
 
 def ver_catalogo_cuentas(frame):
     for widget in frame.winfo_children():
@@ -46,7 +146,7 @@ def ver_catalogo_cuentas(frame):
     main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
     # Título
-    titulo = tk.Label(main_frame, 
+    titulo = tk.Label(main_frame,
                      text="Catálogo de Cuentas",
                      bg="#E0F2FE",
                      font=("Arial", 16, "bold"),
@@ -58,16 +158,16 @@ def ver_catalogo_cuentas(frame):
     table_frame.pack(fill=tk.BOTH, expand=True)
 
     # Crear tabla
-    tabla = ttk.Treeview(table_frame, 
+    tabla = ttk.Treeview(table_frame,
                         columns=("Código", "Nombre", "Código Padre"),
                         show='headings',
                         height=20)
-    
+
     # Configurar columnas
     tabla.heading("Código", text="Código")
     tabla.heading("Nombre", text="Nombre")
     tabla.heading("Código Padre", text="Código Padre")
-    
+
     tabla.column("Código", width=150)
     tabla.column("Nombre", width=400)
     tabla.column("Código Padre", width=150)
@@ -75,7 +175,7 @@ def ver_catalogo_cuentas(frame):
     # Agregar scrollbar
     scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=tabla.yview)
     tabla.configure(yscrollcommand=scrollbar.set)
-    
+
     # Empaquetar tabla y scrollbar
     tabla.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -83,7 +183,7 @@ def ver_catalogo_cuentas(frame):
     # Cargar datos
     db = AccountCatalog("catalogo_cuentas.db")
     accounts = db.get_all_accounts()
-    
+
     # Insertar datos en la tabla
     for account in accounts:
         tabla.insert("", tk.END, values=(
@@ -101,7 +201,6 @@ def ver_catalogo_cuentas(frame):
                        fg="#1E3A8A")
     contador.pack(pady=10)
 
-# Funciones de la interfaz gráfica
 def crear_cuentas_Estados_Financieros(frame):
     for widget in frame.winfo_children():
         widget.destroy()
@@ -111,11 +210,11 @@ def crear_cuentas_Estados_Financieros(frame):
     # Frame principal
     main_frame = tk.Frame(frame, bg="#E0F2FE")
     main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-    
+
     # Frame para los campos de entrada (parte superior)
     input_frame = tk.Frame(main_frame, bg="#E0F2FE", relief="raised", borderwidth=1)
     input_frame.pack(fill=tk.X, pady=(0, 20))
-    
+
     # Campos de entrada
     campos = [
         ("Código:", "entry_codigo"),
@@ -129,7 +228,7 @@ def crear_cuentas_Estados_Financieros(frame):
         widget = tk.Entry(input_frame, width=30, bg="#F3F4F6")
         widgets[widget_name] = widget
         widget.grid(row=i, column=1, padx=10, pady=10, sticky="w")
-    
+
     # Frame para la tabla (parte central)
     table_frame = tk.Frame(main_frame, bg="#E0F2FE", relief="raised", borderwidth=1)
     table_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
@@ -181,15 +280,15 @@ def crear_cuentas_Estados_Financieros(frame):
         codigo = widgets['entry_codigo'].get().strip()
         nombre = widgets['entry_nombre'].get().strip()
         padre = widgets['entry_padre'].get().strip()
-        
+
         if not codigo or not nombre:
             messagebox.showerror("Error", "El código y nombre son obligatorios.")
             return
-        
+
         if not validar_solo_letras(nombre):
             messagebox.showerror("Error", "El nombre solo puede contener letras y espacios.")
             return
-            
+
         if db.create_account(codigo, nombre, padre):
             actualizar_tabla()
             limpiar_campos()
@@ -202,7 +301,7 @@ def crear_cuentas_Estados_Financieros(frame):
         if not codigo:
             messagebox.showerror("Error", "Ingrese un código para buscar.")
             return
-        
+
         cuenta = db.buscar_cuenta_por_codigo(codigo)
         if cuenta:
             widgets['entry_codigo'].delete(0, tk.END)
@@ -221,15 +320,15 @@ def crear_cuentas_Estados_Financieros(frame):
         if not codigo_original.get():
             messagebox.showerror("Error", "Primero debe buscar una cuenta para editar.")
             return
-            
+
         codigo = widgets['entry_codigo'].get().strip()
         nombre = widgets['entry_nombre'].get().strip()
         padre = widgets['entry_padre'].get().strip()
-        
+
         if not codigo or not nombre:
             messagebox.showerror("Error", "El código y nombre son obligatorios.")
             return
-            
+
         if db.editar_cuenta(codigo_original.get(), codigo, nombre, padre):
             actualizar_tabla()
             limpiar_campos()
@@ -241,7 +340,7 @@ def crear_cuentas_Estados_Financieros(frame):
         if not codigo_original.get():
             messagebox.showerror("Error", "Primero debe buscar una cuenta para eliminar.")
             return
-            
+
         if messagebox.askyesno("Confirmar", "¿Está seguro de eliminar esta cuenta?"):
             if db.eliminar_cuenta(codigo_original.get()):
                 actualizar_tabla()
@@ -258,8 +357,8 @@ def crear_cuentas_Estados_Financieros(frame):
     ]
 
     for texto, comando in botones:
-        tk.Button(search_frame, 
-                 text=texto, 
+        tk.Button(search_frame,
+                 text=texto,
                  command=comando,
                  bg="#1E3A8A",
                  fg="white",
@@ -284,114 +383,6 @@ def crear_cuentas_Estados_Financieros(frame):
     # Inicializar tabla
     actualizar_tabla()
 
-class AccountCatalog:
-    def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path)
-        self.create_table()
-        self.initialize_main_accounts()
-
-    def create_table(self):
-        cursor = self.conn.cursor()
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS accounts (
-            code TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            parent_code TEXT,
-            FOREIGN KEY (parent_code) REFERENCES accounts (code)
-        )
-        ''')
-        self.conn.commit()
-
-    def initialize_main_accounts(self):
-        main_accounts = [
-            ("1", "ACTIVO", None),
-            ("2", "PASIVO", None),
-            ("3", "PATRIMONIO", None),
-            ("4", "CUENTAS DE RESULTADO DEUDORAS", None),
-            ("5", "CUENTAS DE RESULTADO ACREEDORAS", None),
-            ("6", "CUENTA DE PUENTE DE CIERRE", None)
-        ]
-        
-        cursor = self.conn.cursor()
-        for code, name, parent in main_accounts:
-            cursor.execute('''
-            INSERT OR IGNORE INTO accounts (code, name, parent_code)
-            VALUES (?, ?, ?)
-            ''', (code, name, parent))
-        self.conn.commit()
-
-    def validate_account_code(self, code: str, parent_code: str) -> bool:
-        if not code.isdigit():
-            return False
-        
-        if parent_code and not code.startswith(parent_code):
-            return False
-        
-        if len(code) not in [1, 2, 4, 6, 8]:
-            return False
-
-        return True
-
-    def create_account(self, code: str, name: str, parent_code: str) -> bool:
-        try:
-            if not self.validate_account_code(code, parent_code):
-                return False
-
-            cursor = self.conn.cursor()
-            cursor.execute('''
-            INSERT INTO accounts (code, name, parent_code)
-            VALUES (?, ?, ?)
-            ''', (code, name, parent_code if parent_code else None))
-            
-            self.conn.commit()
-            return True
-            
-        except Exception as e:
-            print(f"Error al crear la cuenta: {e}")
-            return False
-
-    def buscar_cuenta_por_codigo(self, code: str) -> Optional[Account]:
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT code, name, parent_code FROM accounts WHERE code = ?', (code,))
-        row = cursor.fetchone()
-        if row:
-            return Account(code=row[0], name=row[1], parent_code=row[2])
-        return None
-
-    def editar_cuenta(self, codigo_original: str, nuevo_codigo: str, nuevo_nombre: str, nuevo_padre: str) -> bool:
-        try:
-            if nuevo_padre and not self.validate_account_code(nuevo_codigo, nuevo_padre):
-                return False
-
-            cursor = self.conn.cursor()
-            cursor.execute('''
-            UPDATE accounts 
-            SET code = ?, name = ?, parent_code = ?
-            WHERE code = ?
-            ''', (nuevo_codigo, nuevo_nombre, nuevo_padre if nuevo_padre else None, codigo_original))
-            
-            self.conn.commit()
-            return cursor.rowcount > 0
-            
-        except Exception as e:
-            print(f"Error al editar la cuenta: {e}")
-            return False
-
-    def eliminar_cuenta(self, code: str) -> bool:
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute('DELETE FROM accounts WHERE code = ?', (code,))
-            self.conn.commit()
-            return cursor.rowcount > 0
-        except Exception as e:
-            print(f"Error al eliminar la cuenta: {e}")
-            return False
-
-    def get_all_accounts(self):
-        cursor = self.conn.cursor()
-        cursor.execute('SELECT code, name, parent_code FROM accounts ORDER BY code')
-        return [Account(code, name, parent_code) for code, name, parent_code in cursor.fetchall()]
-
 def mostrar_balance_general(frame):
     for widget in frame.winfo_children():
         widget.destroy()
@@ -402,8 +393,8 @@ def mostrar_balance_general(frame):
     titulo_frame = tk.Frame(frame, bg="#E0F2FE")
     titulo_frame.pack(fill=tk.X, padx=20, pady=10)
 
-    tk.Label(titulo_frame, 
-            text="Balance General", 
+    tk.Label(titulo_frame,
+            text="Balance General",
             bg="#E0F2FE",
             font=("Arial", 16, "bold"),
             fg="#1E3A8A").pack()
@@ -411,12 +402,12 @@ def mostrar_balance_general(frame):
     # Frame para la fecha
     fecha_frame = tk.Frame(frame, bg="#E0F2FE")
     fecha_frame.pack(fill=tk.X, padx=20, pady=5)
-    
-    tk.Label(fecha_frame, 
-            text="Fecha del Balance:", 
+
+    tk.Label(fecha_frame,
+            text="Fecha del Balance:",
             bg="#E0F2FE",
             font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
-    
+
     fecha_entry = ttk.Entry(fecha_frame)
     fecha_entry.pack(side=tk.LEFT, padx=5)
     fecha_entry.insert(0, "31/12/2024")  # Fecha por defecto
@@ -424,12 +415,12 @@ def mostrar_balance_general(frame):
     # Frame para la empresa
     empresa_frame = tk.Frame(frame, bg="#E0F2FE")
     empresa_frame.pack(fill=tk.X, padx=20, pady=5)
-    
-    tk.Label(empresa_frame, 
-            text="Nombre de la Empresa:", 
+
+    tk.Label(empresa_frame,
+            text="Nombre de la Empresa:",
             bg="#E0F2FE",
             font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
-    
+
     empresa_entry = ttk.Entry(empresa_frame, width=50)
     empresa_entry.pack(side=tk.LEFT, padx=5)
 
@@ -444,7 +435,7 @@ def mostrar_balance_general(frame):
     # Frame derecho para Pasivos y Patrimonio
     pasivos_frame = tk.LabelFrame(contenido_frame, text="PASIVO Y PATRIMONIO", bg="#E0F2FE", font=("Arial", 12, "bold"))
     pasivos_frame.grid(row=0, column=1, padx=10, pady=5, sticky="nsew")
-    
+
     contenido_frame.grid_columnconfigure(0, weight=1)
     contenido_frame.grid_columnconfigure(1, weight=1)
 
@@ -455,7 +446,7 @@ def mostrar_balance_general(frame):
         # Combobox para seleccionar cuenta del catálogo
         db = AccountCatalog("catalogo_cuentas.db")
         cuentas = db.get_all_accounts()
-        
+
         # Filtrar cuentas según el tipo y la sección
         filtro_codigo = {
             'activo_corriente': '11',      # Activos Corrientes
@@ -464,21 +455,21 @@ def mostrar_balance_general(frame):
             'pasivo_no_corriente': '22',   # Pasivos No Corrientes
             'patrimonio': '3'              # Patrimonio
         }
-        
+
         codigo_filtro = filtro_codigo.get(tipo_cuenta, '')
-        
+
         # Filtrado específico basado en el tipo de cuenta
         codigos_cuentas = []
         for cuenta in cuentas:
             if cuenta.code.startswith(codigo_filtro) and len(cuenta.code) > len(codigo_filtro):
                 codigos_cuentas.append(f"{cuenta.code} - {cuenta.name}")
-        
+
         cuenta_combo = ttk.Combobox(cuenta_frame, values=codigos_cuentas, width=40)
         cuenta_combo.pack(side=tk.LEFT, padx=2)
 
         monto_entry = ttk.Entry(cuenta_frame, width=15)
         monto_entry.pack(side=tk.LEFT, padx=2)
-        
+
         def eliminar_fila():
             cuenta_frame.destroy()
             actualizar_totales()
@@ -489,9 +480,9 @@ def mostrar_balance_general(frame):
     def agregar_seccion(parent_frame, titulo, tipo_cuenta):
         seccion_frame = tk.LabelFrame(parent_frame, text=titulo, bg="#E0F2FE")
         seccion_frame.pack(fill=tk.X, padx=5, pady=5)
-            
+
         ttk.Button(
-                seccion_frame, 
+                seccion_frame,
                 text="+ Agregar cuenta",
                 command=lambda: agregar_cuenta(seccion_frame, tipo_cuenta)
             ).pack(anchor=tk.W, padx=5, pady=5)
@@ -541,51 +532,131 @@ def mostrar_balance_general(frame):
     botones_frame.pack(fill=tk.X, padx=20, pady=10)
 
     def guardar_balance():
+        # Validar campos obligatorios
+        if not fecha_entry.get().strip():
+            messagebox.showerror("Error", "La fecha es obligatoria")
+            return
+        
+        if not empresa_entry.get().strip():
+            messagebox.showerror("Error", "El nombre de la empresa es obligatorio")
+            return
+
+        # Validar formato de fecha (dd/mm/yyyy)
+        fecha = fecha_entry.get().strip()
+        if not re.match(r'^\d{2}/\d{2}/\d{4}$', fecha):
+            messagebox.showerror("Error", "El formato de fecha debe ser dd/mm/yyyy")
+            return
+
         # Obtener todos los frames de cuentas
         total_activos = 0
         total_pasivos = 0
         total_patrimonio = 0
         
-        # Función auxiliar para extraer el monto de un entry
-        def extraer_monto(entry):
+        # Bandera para verificar si hay al menos una cuenta en cada sección
+        tiene_activos = False
+        tiene_pasivos = False
+        tiene_patrimonio = False
+
+        # Función auxiliar para extraer y validar el monto de un entry
+        def extraer_monto(entry, combo):
             try:
                 texto = entry.get().strip()
                 if not texto:
                     return 0
-                # Eliminar cualquier formato de moneda y convertir a float
-                monto = float(texto.replace('$', '').replace(',', ''))
-                return monto
+                    
+                # Verificar que se haya seleccionado una cuenta
+                if not combo.get().strip():
+                    messagebox.showerror("Error", "Debe seleccionar una cuenta para cada entrada")
+                    return None
+                    
+                if validar_dos_decimales(texto):
+                    # Validar que el monto sea positivo
+                    monto = float(texto.replace('$', '').replace(',', ''))
+                    if monto <= 0:
+                        messagebox.showerror("Error", "Los montos deben ser mayores a cero")
+                        return None
+                    return monto
+                else:
+                    messagebox.showerror("Error", "El monto debe tener un máximo de dos decimales")
+                    return None
             except ValueError:
-                return 0
+                messagebox.showerror("Error", "Monto inválido")
+                return None
 
         # Recorrer todos los frames de activos
         for child in activos_frame.winfo_children():
             if isinstance(child, tk.LabelFrame):  # Verificar si es un frame de sección
                 for cuenta_frame in child.winfo_children():
                     if isinstance(cuenta_frame, tk.Frame):
-                        # Buscar el entry de monto en el frame de la cuenta
+                        combo = None
+                        entry = None
+                        # Buscar el combobox y entry en el frame de la cuenta
                         for widget in cuenta_frame.winfo_children():
-                            if isinstance(widget, ttk.Entry):
-                                total_activos += extraer_monto(widget)
+                            if isinstance(widget, ttk.Combobox):
+                                combo = widget
+                            elif isinstance(widget, ttk.Entry):
+                                entry = widget
+                        
+                        if combo and entry:
+                            monto = extraer_monto(entry, combo)
+                            if monto is None:  # Si hay error en la validación
+                                return
+                            if monto > 0:
+                                tiene_activos = True
+                                total_activos += monto
 
         # Recorrer todos los frames de pasivos y patrimonio
         for child in pasivos_frame.winfo_children():
             if isinstance(child, tk.LabelFrame):
                 for cuenta_frame in child.winfo_children():
                     if isinstance(cuenta_frame, tk.Frame):
+                        combo = None
+                        entry = None
                         for widget in cuenta_frame.winfo_children():
-                            if isinstance(widget, ttk.Entry):
+                            if isinstance(widget, ttk.Combobox):
+                                combo = widget
+                            elif isinstance(widget, ttk.Entry):
+                                entry = widget
+                        
+                        if combo and entry:
+                            monto = extraer_monto(entry, combo)
+                            if monto is None:  # Si hay error en la validación
+                                return
+                            if monto > 0:
                                 if "PASIVO" in child.cget("text"):
-                                    total_pasivos += extraer_monto(widget)
+                                    tiene_pasivos = True
+                                    total_pasivos += monto
                                 else:  # Es patrimonio
-                                    total_patrimonio += extraer_monto(widget)
+                                    tiene_patrimonio = True
+                                    total_patrimonio += monto
 
-        # Verificar que los totales cuadren
-        if abs(total_activos - (total_pasivos + total_patrimonio)) < 0.01:  # Permitir pequeñas diferencias por redondeo
+        # Validar que haya al menos una cuenta en cada sección
+        if not tiene_activos:
+            messagebox.showerror("Error", "Debe incluir al menos una cuenta de activos")
+            return
+        
+        if not tiene_pasivos:
+            messagebox.showerror("Error", "Debe incluir al menos una cuenta de pasivos")
+            return
+            
+        if not tiene_patrimonio:
+            messagebox.showerror("Error", "Debe incluir al menos una cuenta de patrimonio")
+            return
+
+        # Verificar que los totales cuadren (permitiendo una pequeña diferencia por redondeo)
+        diferencia = abs(total_activos - (total_pasivos + total_patrimonio))
+        if diferencia > 0.01:
+            messagebox.showerror("Error",
+                f"El balance no cuadra:\nTotal Activos: ${total_activos:,.2f}\n" +
+                f"Total Pasivos + Patrimonio: ${total_pasivos + total_patrimonio:,.2f}\n" +
+                f"Diferencia: ${diferencia:,.2f}")
+            return
+
+        try:
             # Crear la tabla si no existe
             conn = sqlite3.connect('catalogo_cuentas.db')
             cursor = conn.cursor()
-            
+
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS balance_general (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -597,55 +668,315 @@ def mostrar_balance_general(frame):
                 fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             ''')
-            
+
             # Guardar el balance
-            fecha = fecha_entry.get()
-            empresa = empresa_entry.get()
-            
             cursor.execute('''
             INSERT INTO balance_general (fecha, empresa, total_activos, total_pasivos, total_patrimonio)
             VALUES (?, ?, ?, ?, ?)
-            ''', (fecha, empresa, total_activos, total_pasivos, total_patrimonio))
-            
+            ''', (fecha, empresa_entry.get().strip(), total_activos, total_pasivos, total_patrimonio))
+
             conn.commit()
             conn.close()
-            
+
             # Actualizar las etiquetas de totales
             total_activos_label.config(text=f"Total Activos: ${total_activos:,.2f}")
             total_pasivos_label.config(text=f"Total Pasivos y Patrimonio: ${total_pasivos + total_patrimonio:,.2f}")
-            
+
             messagebox.showinfo("Éxito", "Balance guardado correctamente")
-        else:
-            messagebox.showerror("Error", 
-                f"El balance no cuadra:\nTotal Activos: ${total_activos:,.2f}\n" +
-                f"Total Pasivos + Patrimonio: ${total_pasivos + total_patrimonio:,.2f}\n" +
-                f"Diferencia: ${abs(total_activos - (total_pasivos + total_patrimonio)):,.2f}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al guardar el balance: {str(e)}")
 
     def generar_pdf():
-         pass
-     
+        # Validar que haya datos para generar el PDF
+        if not fecha_entry.get().strip() or not empresa_entry.get().strip():
+            messagebox.showerror("Error", "Debe ingresar la fecha y el nombre de la empresa")
+            return
+
+        # Solicitar ubicación para guardar el PDF
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            initialfile=f"Balance_General_{empresa_entry.get().strip()}_{fecha_entry.get().replace('/', '_')}.pdf"
+        )
+        
+        if not file_path:  # Si el usuario cancela la selección
+            return
+
+        try:
+            # Crear el documento PDF
+            doc = SimpleDocTemplate(
+                file_path,
+                pagesize=letter,
+                rightMargin=72,
+                leftMargin=72,
+                topMargin=72,
+                bottomMargin=72
+            )
+
+            # Lista para almacenar los elementos del PDF
+            elements = []
+
+            # Estilos
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle(
+                'CustomTitle',
+                parent=styles['Heading1'],
+                fontSize=16,
+                alignment=1,  # Centrado
+                spaceAfter=30
+            )
+            
+            subtitle_style = ParagraphStyle(
+                'CustomSubTitle',
+                parent=styles['Heading2'],
+                fontSize=12,
+                alignment=1,
+                spaceAfter=20
+            )
+            
+            normal_style = styles["Normal"]
+            
+            # Título y encabezado
+            elements.append(Paragraph(empresa_entry.get().strip().upper(), title_style))
+            elements.append(Paragraph("BALANCE GENERAL", title_style))
+            elements.append(Paragraph(f"Al {fecha_entry.get()}", subtitle_style))
+            elements.append(Paragraph(f"(Expresado en dólares de los Estados Unidos de América)", subtitle_style))
+            elements.append(Spacer(1, 20))
+
+            # Recolectar datos de activos
+            activos_data = [["ACTIVOS", "Monto"]]
+            total_activos = 0
+            
+            # Función auxiliar para extraer monto
+            def extraer_monto(entry):
+                try:
+                    texto = entry.get().strip()
+                    if texto and validar_dos_decimales(texto):
+                        return float(texto.replace('$', '').replace(',', ''))
+                except ValueError:
+                    pass
+                return 0
+            
+            # Procesar activos corrientes
+            activos_corrientes = []
+            activos_corrientes_total = 0
+            for child in activos_frame.winfo_children():
+                if isinstance(child, tk.LabelFrame) and "CORRIENTES" in child.cget("text"):
+                    for cuenta_frame in child.winfo_children():
+                        if isinstance(cuenta_frame, tk.Frame):
+                            combo = None
+                            entry = None
+                            for widget in cuenta_frame.winfo_children():
+                                if isinstance(widget, ttk.Combobox):
+                                    combo = widget
+                                elif isinstance(widget, ttk.Entry):
+                                    entry = widget
+                            if combo and entry and combo.get().strip():
+                                monto = extraer_monto(entry)
+                                if monto > 0:
+                                    cuenta = combo.get().split(' - ')[1]  # Obtener solo el nombre de la cuenta
+                                    activos_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
+                                    activos_corrientes_total += monto
+            
+            if activos_corrientes:
+                activos_data.append(["ACTIVOS CORRIENTES", ""])
+                activos_data.extend(activos_corrientes)
+                activos_data.append(["Total Activos Corrientes", f"${activos_corrientes_total:,.2f}"])
+                total_activos += activos_corrientes_total
+
+            # Procesar activos no corrientes
+            activos_no_corrientes = []
+            activos_no_corrientes_total = 0
+            for child in activos_frame.winfo_children():
+                if isinstance(child, tk.LabelFrame) and "NO CORRIENTES" in child.cget("text"):
+                    for cuenta_frame in child.winfo_children():
+                        if isinstance(cuenta_frame, tk.Frame):
+                            combo = None
+                            entry = None
+                            for widget in cuenta_frame.winfo_children():
+                                if isinstance(widget, ttk.Combobox):
+                                    combo = widget
+                                elif isinstance(widget, ttk.Entry):
+                                    entry = widget
+                            if combo and entry and combo.get().strip():
+                                monto = extraer_monto(entry)
+                                if monto > 0:
+                                    cuenta = combo.get().split(' - ')[1]
+                                    activos_no_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
+                                    activos_no_corrientes_total += monto
+
+            if activos_no_corrientes:
+                activos_data.append(["ACTIVOS NO CORRIENTES", ""])
+                activos_data.extend(activos_no_corrientes)
+                activos_data.append(["Total Activos No Corrientes", f"${activos_no_corrientes_total:,.2f}"])
+                total_activos += activos_no_corrientes_total
+
+            activos_data.append(["TOTAL ACTIVOS", f"${total_activos:,.2f}"])
+
+            # Crear tabla de activos
+            activos_table = Table(activos_data, colWidths=[4*inch, 2*inch])
+            activos_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.black),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('TOPPADDING', (0, -1), (-1, -1), 12),
+                ('LINEBELOW', (0, -1), (-1, -1), 1, colors.black),
+            ]))
+
+            elements.append(activos_table)
+            elements.append(Spacer(1, 20))
+
+            # Recolectar datos de pasivos y patrimonio
+            pasivos_patrimonio_data = [["PASIVOS Y PATRIMONIO", "Monto"]]
+            total_pasivos = 0
+            total_patrimonio = 0
+
+            # Procesar pasivos corrientes
+            pasivos_corrientes = []
+            pasivos_corrientes_total = 0
+            for child in pasivos_frame.winfo_children():
+                if isinstance(child, tk.LabelFrame) and "CORRIENTES" in child.cget("text"):
+                    for cuenta_frame in child.winfo_children():
+                        if isinstance(cuenta_frame, tk.Frame):
+                            combo = None
+                            entry = None
+                            for widget in cuenta_frame.winfo_children():
+                                if isinstance(widget, ttk.Combobox):
+                                    combo = widget
+                                elif isinstance(widget, ttk.Entry):
+                                    entry = widget
+                            if combo and entry and combo.get().strip():
+                                monto = extraer_monto(entry)
+                                if monto > 0:
+                                    cuenta = combo.get().split(' - ')[1]
+                                    pasivos_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
+                                    pasivos_corrientes_total += monto
+
+            if pasivos_corrientes:
+                pasivos_patrimonio_data.append(["PASIVOS CORRIENTES", ""])
+                pasivos_patrimonio_data.extend(pasivos_corrientes)
+                pasivos_patrimonio_data.append(["Total Pasivos Corrientes", f"${pasivos_corrientes_total:,.2f}"])
+                total_pasivos += pasivos_corrientes_total
+
+            # Procesar pasivos no corrientes
+            pasivos_no_corrientes = []
+            pasivos_no_corrientes_total = 0
+            for child in pasivos_frame.winfo_children():
+                if isinstance(child, tk.LabelFrame) and "NO CORRIENTES" in child.cget("text"):
+                    for cuenta_frame in child.winfo_children():
+                        if isinstance(cuenta_frame, tk.Frame):
+                            combo = None
+                            entry = None
+                            for widget in cuenta_frame.winfo_children():
+                                if isinstance(widget, ttk.Combobox):
+                                    combo = widget
+                                elif isinstance(widget, ttk.Entry):
+                                    entry = widget
+                            if combo and entry and combo.get().strip():
+                                monto = extraer_monto(entry)
+                                if monto > 0:
+                                    cuenta = combo.get().split(' - ')[1]
+                                    pasivos_no_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
+                                    pasivos_no_corrientes_total += monto
+
+            if pasivos_no_corrientes:
+                pasivos_patrimonio_data.append(["PASIVOS NO CORRIENTES", ""])
+                pasivos_patrimonio_data.extend(pasivos_no_corrientes)
+                pasivos_patrimonio_data.append(["Total Pasivos No Corrientes", f"${pasivos_no_corrientes_total:,.2f}"])
+                total_pasivos += pasivos_no_corrientes_total
+
+            pasivos_patrimonio_data.append(["TOTAL PASIVOS", f"${total_pasivos:,.2f}"])
+
+            # Procesar patrimonio
+            patrimonio_items = []
+            for child in pasivos_frame.winfo_children():
+                if isinstance(child, tk.LabelFrame) and "PATRIMONIO" in child.cget("text"):
+                    for cuenta_frame in child.winfo_children():
+                        if isinstance(cuenta_frame, tk.Frame):
+                            combo = None
+                            entry = None
+                            for widget in cuenta_frame.winfo_children():
+                                if isinstance(widget, ttk.Combobox):
+                                    combo = widget
+                                elif isinstance(widget, ttk.Entry):
+                                    entry = widget
+                            if combo and entry and combo.get().strip():
+                                monto = extraer_monto(entry)
+                                if monto > 0:
+                                    cuenta = combo.get().split(' - ')[1]
+                                    patrimonio_items.append(["    " + cuenta, f"${monto:,.2f}"])
+                                    total_patrimonio += monto
+
+            if patrimonio_items:
+                pasivos_patrimonio_data.append(["PATRIMONIO", ""])
+                pasivos_patrimonio_data.extend(patrimonio_items)
+                pasivos_patrimonio_data.append(["TOTAL PATRIMONIO", f"${total_patrimonio:,.2f}"])
+
+            pasivos_patrimonio_data.append(["TOTAL PASIVOS Y PATRIMONIO", f"${(total_pasivos + total_patrimonio):,.2f}"])
+
+            # Crear tabla de pasivos y patrimonio
+            pasivos_patrimonio_table = Table(pasivos_patrimonio_data, colWidths=[4*inch, 2*inch])
+            pasivos_patrimonio_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('TEXTCOLOR', (0, -1), (-1, -1), colors.black),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('TOPPADDING', (0, -1), (-1, -1), 12),
+                ('LINEBELOW', (0, -1), (-1, -1), 1, colors.black),
+            ]))
+
+            elements.append(pasivos_patrimonio_table)
+            
+            # Agregar espacio para firmas
+            elements.append(Spacer(1, 50))
+            
+            # Crear tabla para firmas
+            firma_data = [
+                ["_______________________", "_______________________", "_______________________"],
+                ["Representante Legal", "Contador", "Auditor"],
+            ]
+            firma_table = Table(firma_data, colWidths=[2.5*inch, 2.5*inch, 2.5*inch])
+            firma_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 1), (-1, 1), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, 1), 10),
+                ('TOPPADDING', (0, 1), (-1, 1), 5),
+            ]))
+            
+            elements.append(firma_table)
+
+            # Generar el PDF
+            doc.build(elements)
+            
+            # Mostrar mensaje de éxito y preguntar si desea abrir el PDF
+            if messagebox.askyesno("Éxito", "PDF generado correctamente. ¿Desea abrirlo?"):
+                os.startfile(file_path) if os.name == 'nt' else os.system(f'xdg-open {file_path}')
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error al generar el PDF: {str(e)}")
+
     ttk.Button(botones_frame, text="Guardar Balance", command=guardar_balance).pack(side=tk.LEFT, padx=5)
     ttk.Button(botones_frame, text="Generar PDF", command=generar_pdf).pack(side=tk.LEFT, padx=5)
-    
-#Cerrar la aplicación
-def cerrar_aplicacion(ventana):
-    ventana.quit()
-    ventana.destroy()
-    import sys
-    sys.exit()
 
 def menu_principal():
     ventana_principal = tk.Tk()
     ventana_principal.title("Sistema de Contabilidad")
     ventana_principal.geometry("1200x600")
-    ventana_principal.configure(bg="#E0F2FE")  # Fondo azul claro
+    ventana_principal.configure(bg="#E0F2FE")
     ventana_principal.resizable(True, True)
 
-    frame_botones = tk.Frame(ventana_principal, bg="#1E3A8A", width=290, height=400)  # Azul oscuro para menú lateral
+    frame_botones = tk.Frame(ventana_principal, bg="#1E3A8A", width=290, height=400)
     frame_botones.pack(side=tk.LEFT, fill=tk.Y)
     frame_botones.pack_propagate(False)
 
-    frame_contenido = tk.Frame(ventana_principal, bg="#E0F2FE")  # Fondo azul claro
+    frame_contenido = tk.Frame(ventana_principal, bg="#E0F2FE")
     frame_contenido.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
     botones = [
@@ -657,11 +988,17 @@ def menu_principal():
     ]
 
     for texto, comando in botones:
-        color = "#DC2626" if texto == "Salir" else "#1E3A8A"  
+        color = "#DC2626" if texto == "Salir" else "#1E3A8A"
         tk.Button(frame_botones, text=texto, command=comando, bg=color, fg="white", activebackground="#00587A", width=33, height=2, font=("Arial", 10, "bold")).pack(pady=5)
 
     ventana_principal.protocol("WM_DELETE_WINDOW", lambda: cerrar_aplicacion(ventana_principal))
     ventana_principal.mainloop()
 
+def cerrar_aplicacion(ventana):
+    ventana.quit()
+    ventana.destroy()
+    import sys
+    sys.exit()
+
 if __name__ == "__main__":
-    menu_principal() 
+    menu_principal()
