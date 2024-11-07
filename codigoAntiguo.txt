@@ -731,3 +731,56 @@ def menu_principal():
 
 # Iniciar la aplicación
 menu_principal()
+
+
+/*******************************************************************************************************/
+def mostrar_balance_general(frame):
+'''for widget in frame.winfo_children():
+        widget.destroy()
+
+    frame.configure(bg="#E0F2FE")
+
+    categorias = [
+        ("ACTIVOS CIRCULANTES", 0, 0),
+        ("ACTIVOS NO CIRCULANTES", 1, 0),
+        ("PASIVOS CIRCULANTES", 0, 1),
+        ("PASIVOS NO CIRCULANTES", 1, 1),
+        ("CAPITAL", 2, 1)
+    ]
+
+    trees = {}
+    for titulo, row, col in categorias:
+        frame_categoria = tk.Frame(frame, bg="#E0F2FE")
+        frame_categoria.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+        tk.Label(frame_categoria, text=titulo, bg="#E0F2FE", font=("Arial", 12, "bold"), fg="#1E3A8A").pack()
+
+        tree = ttk.Treeview(frame_categoria, columns=("Nombre", "Monto"), show='headings', height=5)
+        tree.heading("Nombre", text="Nombre")
+        tree.heading("Monto", text="Monto")
+        tree.column("Nombre", width=170)
+        tree.column("Monto", width=100)
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        trees[titulo.lower().replace(" ", "_")] = tree
+
+    filas = obtener_cuentas_balancegeneral()
+    totales = {categoria: 0 for categoria in trees.keys()}
+
+    for nombre, tipo, monto in filas:
+        categoria = tipo.lower().replace(" ", "_")
+        monto_formateado = formatear_numero(monto)
+        trees[categoria].insert("", tk.END, values=(nombre, monto_formateado))
+        totales[categoria] += monto
+
+    for tipo, tree in trees.items():
+        total_formateado = formatear_numero(totales[tipo])
+        tree.insert("", tk.END, values=(f"Total de {tipo.lower()}", total_formateado), tags=("total",))
+        tree.tag_configure("total", background="#1E3A8A", foreground="white")
+
+    total_activos = totales["activos_circulantes"] + totales["activos_no_circulantes"]
+    total_pasivos_patrimonio = sum(totales[tipo] for tipo in ["pasivos_circulantes", "pasivos_no_circulantes", "capital"])
+
+    tk.Label(frame, bg="#E0F2FE", fg="#a83232", text=f"Total de activos = ${formatear_numero(total_activos)}", font=("Arial", 14, "bold")).grid(row=3, column=0, columnspan=1, padx=10, pady=10)
+    tk.Label(frame, bg="#E0F2FE", fg="#a83232", text=f"Total de pasivos + patrimonio = ${formatear_numero(total_pasivos_patrimonio)}", font=("Arial", 14, "bold")).grid(row=3, column=1, columnspan=1, padx=10, pady=10)
+    '''
