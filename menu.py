@@ -1,6 +1,6 @@
 import re
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import TclError, ttk, messagebox
 import sqlite3
 from dataclasses import dataclass
 from typing import Optional
@@ -201,16 +201,37 @@ def mostrar_estado_resultado(root_frame):
 
     # Función para agregar cuenta
     def agregar_cuenta():
+        nombre_emp = nombre_empresa.get()
         nombre = nombre_cuenta.get()
-        valor = valor_cuenta.get()
         tipo = tipo_cuenta.get()
+
+        if not validar_solo_letras(nombre_emp):
+            messagebox.showerror("Error", "El nombre de la empresa solo puede contener letras y espacios.")
+            return
+
+        if not validar_solo_letras(nombre):
+            messagebox.showerror("Error", "El nombre de la cuenta solo puede contener letras y espacios.")
+            return
+
+        try:
+            valor = valor_cuenta.get()
+            # Valida si tiene hasta dos decimales
+            if not validar_dos_decimales(str(valor)):
+                messagebox.showerror("Error", "El valor de la cuenta debe tener hasta dos decimales y ser mayor que 0.")
+                return
+            valor = float(valor)  # Convierte a float solo si pasa la validación
+        except ValueError:
+            messagebox.showerror("Error", "El valor de la cuenta debe ser un número mayor de 0.")
+        except TclError:
+            messagebox.showerror("Error", "Entrada inválida. Introduce un valor numerico en el campo de valor de la cuenta.")
+
         if nombre and valor:
             cuentas.append((nombre, valor, tipo))
             lista_cuentas.insert(tk.END, f"{tipo}: {nombre} - ${valor:.2f}")
             nombre_cuenta.set("")
             valor_cuenta.set(0.0)
         else:
-            messagebox.showwarning("Advertencia", "Por favor ingrese el nombre, valor y tipo de la cuenta.")
+            messagebox.showwarning("Advertencia", "Por favor ingrese el nombre de empresa, nombre de cuenta, valor de cuenta y tipo de la cuenta.")
 
     tk.Button(frame, text="Agregar Cuenta", command=agregar_cuenta, width=27).grid(row=5, column=0, columnspan=2, padx=5, pady=10, sticky="ew")
 
@@ -718,8 +739,6 @@ def mostrar_balance_general(frame):
     agregar_seccion(pasivos_frame, "PASIVOS NO CORRIENTES", "pasivo_no_corriente", cuentas_seleccionadas_pasivo_no_corriente)
     agregar_seccion(pasivos_frame, "PATRIMONIO", "patrimonio", cuentas_seleccionadas_patrimonio)
 
-    # Resto del código para totales, guardar balance, generar PDF, etc.
-
     # Frame para totales
     totales_frame = tk.Frame(frame, bg="#E0F2FE")
     totales_frame.pack(fill=tk.X, padx=20, pady=10)
@@ -801,7 +820,7 @@ def mostrar_balance_general(frame):
                         return None
                     return monto
                 else:
-                    messagebox.showerror("Error", "El monto debe tener un máximo de dos decimales")
+                    messagebox.showerror("Error", "El monto debe tener un máximo de dos decimales y ser un numero mayor a 0")
                     return None
             except ValueError:
                 messagebox.showerror("Error", "Monto inválido")
