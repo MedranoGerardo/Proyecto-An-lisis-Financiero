@@ -1241,6 +1241,3 @@ def cerrar_aplicacion(ventana):
     ventana.destroy()
     import sys
     sys.exit()
-
-if __name__ == "__main__":
-    menu_principal()
