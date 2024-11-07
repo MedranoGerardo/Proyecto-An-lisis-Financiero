@@ -102,24 +102,21 @@ class AccountCatalog:
             return Account(code=row[0], name=row[1], parent_code=row[2])
         return None
 
-    def editar_cuenta(self, codigo_original: str, nuevo_codigo: str, nuevo_nombre: str, nuevo_padre: str) -> bool:
-        try:
-            if nuevo_padre and not self.validate_account_code(nuevo_codigo, nuevo_padre):
+    def editar_cuenta(self, codigo_original: str, nuevo_nombre: str) -> bool:
+            try:
+                cursor = self.conn.cursor()
+                cursor.execute('''
+                UPDATE accounts
+                SET name = ?
+                WHERE code = ?
+                ''', (nuevo_nombre, codigo_original))
+
+                self.conn.commit()
+                return cursor.rowcount > 0
+
+            except Exception as e:
+                print(f"Error al editar la cuenta: {e}")
                 return False
-
-            cursor = self.conn.cursor()
-            cursor.execute('''
-            UPDATE accounts
-            SET code = ?, name = ?, parent_code = ?
-            WHERE code = ?
-            ''', (nuevo_codigo, nuevo_nombre, nuevo_padre if nuevo_padre else None, codigo_original))
-
-            self.conn.commit()
-            return cursor.rowcount > 0
-
-        except Exception as e:
-            print(f"Error al editar la cuenta: {e}")
-            return False
 
     def eliminar_cuenta(self, code: str) -> bool:
         try:
@@ -457,8 +454,16 @@ def crear_cuentas_Estados_Financieros(frame):
             ))
 
     def limpiar_campos():
+        # Habilitar todos los campos antes de limpiar
+        widgets['entry_codigo'].config(state='normal')
+        widgets['entry_nombre'].config(state='normal')
+        widgets['entry_padre'].config(state='normal')
+        entry_buscarCuenta.config(state='normal')
+        
+        # Limpiar todos los campos de entrada
         for widget in widgets.values():
             widget.delete(0, tk.END)
+        
         entry_buscarCuenta.delete(0, tk.END)
         codigo_original.set('')
 
@@ -483,42 +488,50 @@ def crear_cuentas_Estados_Financieros(frame):
             messagebox.showerror("Error", "No se pudo crear la cuenta. Verifique el formato del código y que el código padre exista.")
 
     def buscar_cuenta():
-        codigo = entry_buscarCuenta.get().strip()
-        if not codigo:
-            messagebox.showerror("Error", "Ingrese un código para buscar.")
-            return
+            codigo = entry_buscarCuenta.get().strip()
+            if not codigo:
+                messagebox.showerror("Error", "Ingrese un código para buscar.")
+                return
 
-        cuenta = db.buscar_cuenta_por_codigo(codigo)
-        if cuenta:
-            widgets['entry_codigo'].delete(0, tk.END)
-            widgets['entry_codigo'].insert(0, cuenta.code)
-            widgets['entry_nombre'].delete(0, tk.END)
-            widgets['entry_nombre'].insert(0, cuenta.name)
-            widgets['entry_padre'].delete(0, tk.END)
-            if cuenta.parent_code:
-                widgets['entry_padre'].insert(0, cuenta.parent_code)
-            codigo_original.set(cuenta.code)
-            messagebox.showinfo("Éxito", "Cuenta encontrada.")
-        else:
-            messagebox.showerror("Error", "La cuenta no existe.")
+            cuenta = db.buscar_cuenta_por_codigo(codigo)
+            if cuenta:
+                # Llenar los campos con los datos encontrados
+                widgets['entry_codigo'].delete(0, tk.END)
+                widgets['entry_codigo'].insert(0, cuenta.code)
+                widgets['entry_codigo'].config(state='disabled')  # Deshabilitar campo de código
+
+                widgets['entry_nombre'].delete(0, tk.END)
+                widgets['entry_nombre'].insert(0, cuenta.name)
+
+                widgets['entry_padre'].delete(0, tk.END)
+                if cuenta.parent_code:
+                    widgets['entry_padre'].insert(0, cuenta.parent_code)
+                widgets['entry_padre'].config(state='disabled')  # Deshabilitar campo de código padre
+
+                codigo_original.set(cuenta.code)
+                messagebox.showinfo("Éxito", "Cuenta encontrada.")
+            else:
+                messagebox.showerror("Error", "La cuenta no existe.")
 
     def editar_cuenta():
         if not codigo_original.get():
             messagebox.showerror("Error", "Primero debe buscar una cuenta para editar.")
             return
 
-        codigo = widgets['entry_codigo'].get().strip()
         nombre = widgets['entry_nombre'].get().strip()
-        padre = widgets['entry_padre'].get().strip()
 
-        if not codigo or not nombre:
-            messagebox.showerror("Error", "El código y nombre son obligatorios.")
+        if not nombre:
+            messagebox.showerror("Error", "El nombre es obligatorio.")
             return
 
-        if db.editar_cuenta(codigo_original.get(), codigo, nombre, padre):
+        # Solo se actualiza el nombre de la cuenta
+        if db.editar_cuenta(codigo_original.get(), nombre):
             actualizar_tabla()
+            
+            # Limpiar todos los campos después de la edición
             limpiar_campos()
-            messagebox.showinfo("Éxito", "Cuenta actualizada correctamente")
+            
+            messagebox.showinfo("Éxito", "Nombre de la cuenta actualizado correctamente")
         else:
             messagebox.showerror("Error", "No se pudo actualizar la cuenta.")
 
