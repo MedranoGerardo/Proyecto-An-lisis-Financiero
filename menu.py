@@ -5,6 +5,8 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Optional
 import os
+from tkcalendar import DateEntry
+from datetime import datetime
 from tkinter import filedialog
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
@@ -551,8 +553,8 @@ def crear_cuentas_Estados_Financieros(frame):
     # Botones del frame de búsqueda
     botones = [
         ("Buscar Cuenta", buscar_cuenta),
-        ("Editar Cuenta", editar_cuenta),
-        ("Eliminar Cuenta", eliminar_cuenta)
+        ("Editar Cuenta", editar_cuenta)
+        # ("Eliminar Cuenta", eliminar_cuenta)
     ]
 
     for texto, comando in botones:
@@ -609,14 +611,13 @@ def mostrar_balance_general(frame):
     fecha_frame = tk.Frame(frame, bg="#E0F2FE")
     fecha_frame.pack(fill=tk.X, padx=20, pady=5)
 
-    tk.Label(fecha_frame,
-            text="Fecha del Balance:",
-            bg="#E0F2FE",
-            font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
+    # Etiqueta
+    tk.Label(fecha_frame, text="Fecha del Balance:", bg="#E0F2FE", font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
 
-    fecha_entry = ttk.Entry(fecha_frame)
+    # Entrada de fecha con selector
+    fecha_entry = DateEntry(fecha_frame, width=12, background='darkblue', foreground='white', borderwidth=2, date_pattern='dd/MM/yyyy')
+    fecha_entry.set_date(datetime.today())  # Fecha actual
     fecha_entry.pack(side=tk.LEFT, padx=5)
-    fecha_entry.insert(0, "31/12/2024")  # Fecha por defecto
 
     # Frame para la empresa
     empresa_frame = tk.Frame(frame, bg="#E0F2FE")
