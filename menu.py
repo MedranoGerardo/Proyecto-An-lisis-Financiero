@@ -389,6 +389,13 @@ def mostrar_balance_general(frame):
 
     frame.configure(bg="#E0F2FE")
 
+    # Conjuntos para almacenar cuentas seleccionadas en cada sección
+    cuentas_seleccionadas_activo_corriente = set()
+    cuentas_seleccionadas_activo_no_corriente = set()
+    cuentas_seleccionadas_pasivo_corriente = set()
+    cuentas_seleccionadas_pasivo_no_corriente = set()
+    cuentas_seleccionadas_patrimonio = set()
+
     # Frame principal con título
     titulo_frame = tk.Frame(frame, bg="#E0F2FE")
     titulo_frame.pack(fill=tk.X, padx=20, pady=10)
@@ -439,7 +446,7 @@ def mostrar_balance_general(frame):
     contenido_frame.grid_columnconfigure(0, weight=1)
     contenido_frame.grid_columnconfigure(1, weight=1)
 
-    def agregar_cuenta(parent_frame, tipo_cuenta):
+    def agregar_cuenta(parent_frame, tipo_cuenta, cuentas_seleccionadas):
         cuenta_frame = tk.Frame(parent_frame, bg="#E0F2FE")
         cuenta_frame.pack(fill=tk.X, padx=5, pady=2)
 
@@ -461,7 +468,7 @@ def mostrar_balance_general(frame):
         # Filtrado específico basado en el tipo de cuenta
         codigos_cuentas = []
         for cuenta in cuentas:
-            if cuenta.code.startswith(codigo_filtro) and len(cuenta.code) > len(codigo_filtro):
+            if cuenta.code.startswith(codigo_filtro) and len(cuenta.code) > len(codigo_filtro) and cuenta.code not in cuentas_seleccionadas:
                 codigos_cuentas.append(f"{cuenta.code} - {cuenta.name}")
 
         cuenta_combo = ttk.Combobox(cuenta_frame, values=codigos_cuentas, width=40)
@@ -471,30 +478,47 @@ def mostrar_balance_general(frame):
         monto_entry.pack(side=tk.LEFT, padx=2)
 
         def eliminar_fila():
+            # Eliminar cuenta del conjunto de seleccionadas al eliminar la fila
+            cuenta_seleccionada = cuenta_combo.get().split(' - ')[0]
+            cuentas_seleccionadas.discard(cuenta_seleccionada)  # Quitar del registro de seleccionadas
             cuenta_frame.destroy()
             actualizar_totales()
 
         ttk.Button(cuenta_frame, text="X", width=3, command=eliminar_fila).pack(side=tk.LEFT, padx=2)
+
+        # Verificar si se seleccionó una cuenta
+        def on_combo_select(event):
+            cuenta_seleccionada = cuenta_combo.get().split(' - ')[0]
+            if cuenta_seleccionada in cuentas_seleccionadas:
+                messagebox.showerror("Error", "Esta cuenta ya ha sido seleccionada.")
+                cuenta_combo.set('')  # Limpiar la selección si ya está elegida
+            else:
+                cuentas_seleccionadas.add(cuenta_seleccionada)  # Agregar cuenta al registro de seleccionadas
+
+        cuenta_combo.bind("<<ComboboxSelected>>", on_combo_select)
+
         return cuenta_combo, monto_entry
 
-    def agregar_seccion(parent_frame, titulo, tipo_cuenta):
+    def agregar_seccion(parent_frame, titulo, tipo_cuenta, cuentas_seleccionadas):
         seccion_frame = tk.LabelFrame(parent_frame, text=titulo, bg="#E0F2FE")
         seccion_frame.pack(fill=tk.X, padx=5, pady=5)
 
         ttk.Button(
                 seccion_frame,
                 text="+ Agregar cuenta",
-                command=lambda: agregar_cuenta(seccion_frame, tipo_cuenta)
+                command=lambda: agregar_cuenta(seccion_frame, tipo_cuenta, cuentas_seleccionadas)
             ).pack(anchor=tk.W, padx=5, pady=5)
 
-    # Secciones de Activos
-    agregar_seccion(activos_frame, "ACTIVOS CORRIENTES", "activo_corriente")
-    agregar_seccion(activos_frame, "ACTIVOS NO CORRIENTES", "activo_no_corriente")
+    # Secciones de Activos con sus respectivos conjuntos de cuentas
+    agregar_seccion(activos_frame, "ACTIVOS CORRIENTES", "activo_corriente", cuentas_seleccionadas_activo_corriente)
+    agregar_seccion(activos_frame, "ACTIVOS NO CORRIENTES", "activo_no_corriente", cuentas_seleccionadas_activo_no_corriente)
 
-    # Secciones de Pasivos y Patrimonio
-    agregar_seccion(pasivos_frame, "PASIVOS CORRIENTES", "pasivo_corriente")
-    agregar_seccion(pasivos_frame, "PASIVOS NO CORRIENTES", "pasivo_no_corriente")
-    agregar_seccion(pasivos_frame, "PATRIMONIO", "patrimonio")
+    # Secciones de Pasivos y Patrimonio con sus respectivos conjuntos de cuentas
+    agregar_seccion(pasivos_frame, "PASIVOS CORRIENTES", "pasivo_corriente", cuentas_seleccionadas_pasivo_corriente)
+    agregar_seccion(pasivos_frame, "PASIVOS NO CORRIENTES", "pasivo_no_corriente", cuentas_seleccionadas_pasivo_no_corriente)
+    agregar_seccion(pasivos_frame, "PATRIMONIO", "patrimonio", cuentas_seleccionadas_patrimonio)
+
+    # Resto del código para totales, guardar balance, generar PDF, etc.
 
     # Frame para totales
     totales_frame = tk.Frame(frame, bg="#E0F2FE")
@@ -747,7 +771,7 @@ def mostrar_balance_general(frame):
             activos_data = [["ACTIVOS", "Monto"]]
             total_activos = 0
             
-            # Función auxiliar para extraer monto
+            # Función auxiliar para extraer monto con validación
             def extraer_monto(entry):
                 try:
                     texto = entry.get().strip()
@@ -755,8 +779,12 @@ def mostrar_balance_general(frame):
                         return float(texto.replace('$', '').replace(',', ''))
                 except ValueError:
                     pass
-                return 0
+                return 0  # Devuelve 0 si el campo está vacío o es inválido
+
             
+           # Conjunto para rastrear las cuentas ya procesadas y evitar duplicación
+            cuentas_procesadas = set()
+
             # Procesar activos corrientes
             activos_corrientes = []
             activos_corrientes_total = 0
@@ -774,10 +802,14 @@ def mostrar_balance_general(frame):
                             if combo and entry and combo.get().strip():
                                 monto = extraer_monto(entry)
                                 if monto > 0:
-                                    cuenta = combo.get().split(' - ')[1]  # Obtener solo el nombre de la cuenta
-                                    activos_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
-                                    activos_corrientes_total += monto
-            
+                                    cuenta = combo.get()
+                                    # Verificar si la cuenta ya ha sido procesada y pertenece a "Activos Corrientes"
+                                    if cuenta not in cuentas_procesadas and cuenta.startswith("11"):
+                                        activos_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
+                                        activos_corrientes_total += monto
+                                        cuentas_procesadas.add(cuenta)  # Añadir la cuenta al conjunto
+
+            # Añadir datos de activos corrientes al PDF
             if activos_corrientes:
                 activos_data.append(["ACTIVOS CORRIENTES", ""])
                 activos_data.extend(activos_corrientes)
@@ -801,16 +833,21 @@ def mostrar_balance_general(frame):
                             if combo and entry and combo.get().strip():
                                 monto = extraer_monto(entry)
                                 if monto > 0:
-                                    cuenta = combo.get().split(' - ')[1]
-                                    activos_no_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
-                                    activos_no_corrientes_total += monto
+                                    cuenta = combo.get()
+                                    # Verificar si la cuenta ya ha sido procesada y pertenece a "Activos No Corrientes"
+                                    if cuenta not in cuentas_procesadas and cuenta.startswith("12"):
+                                        activos_no_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
+                                        activos_no_corrientes_total += monto
+                                        cuentas_procesadas.add(cuenta)  # Añadir la cuenta al conjunto
 
+            # Añadir datos de activos no corrientes al PDF
             if activos_no_corrientes:
                 activos_data.append(["ACTIVOS NO CORRIENTES", ""])
                 activos_data.extend(activos_no_corrientes)
                 activos_data.append(["Total Activos No Corrientes", f"${activos_no_corrientes_total:,.2f}"])
                 total_activos += activos_no_corrientes_total
 
+            # Añadir total de activos al PDF
             activos_data.append(["TOTAL ACTIVOS", f"${total_activos:,.2f}"])
 
             # Crear tabla de activos
@@ -829,6 +866,9 @@ def mostrar_balance_general(frame):
 
             elements.append(activos_table)
             elements.append(Spacer(1, 20))
+
+            # Conjunto para rastrear las cuentas ya procesadas y evitar duplicación
+            cuentas_procesadas = set()
 
             # Recolectar datos de pasivos y patrimonio
             pasivos_patrimonio_data = [["PASIVOS Y PATRIMONIO", "Monto"]]
@@ -852,10 +892,14 @@ def mostrar_balance_general(frame):
                             if combo and entry and combo.get().strip():
                                 monto = extraer_monto(entry)
                                 if monto > 0:
-                                    cuenta = combo.get().split(' - ')[1]
-                                    pasivos_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
-                                    pasivos_corrientes_total += monto
+                                     cuenta = combo.get()
+                                    # Verificar si la cuenta ya ha sido procesada y pertenece a "Pasivos Corrientes"
+                                if cuenta not in cuentas_procesadas and cuenta.startswith("21"):
+                                        pasivos_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
+                                        pasivos_corrientes_total += monto
+                                        cuentas_procesadas.add(cuenta)  # Añadir la cuenta al conjunto
 
+            # Añadir datos de pasivos corrientes al PDF
             if pasivos_corrientes:
                 pasivos_patrimonio_data.append(["PASIVOS CORRIENTES", ""])
                 pasivos_patrimonio_data.extend(pasivos_corrientes)
@@ -879,16 +923,21 @@ def mostrar_balance_general(frame):
                             if combo and entry and combo.get().strip():
                                 monto = extraer_monto(entry)
                                 if monto > 0:
-                                    cuenta = combo.get().split(' - ')[1]
+                                      cuenta = combo.get()
+                                # Verificar si la cuenta ya ha sido procesada y pertenece a "Pasivos No Corrientes"
+                                if cuenta not in cuentas_procesadas and cuenta.startswith("22"):
                                     pasivos_no_corrientes.append(["    " + cuenta, f"${monto:,.2f}"])
                                     pasivos_no_corrientes_total += monto
-
+                                    cuentas_procesadas.add(cuenta)  # Añadir la cuenta al conjunto
+                                    
+            # Añadir datos de pasivos no corrientes al PDF
             if pasivos_no_corrientes:
                 pasivos_patrimonio_data.append(["PASIVOS NO CORRIENTES", ""])
                 pasivos_patrimonio_data.extend(pasivos_no_corrientes)
                 pasivos_patrimonio_data.append(["Total Pasivos No Corrientes", f"${pasivos_no_corrientes_total:,.2f}"])
                 total_pasivos += pasivos_no_corrientes_total
 
+            # Añadir total de pasivos
             pasivos_patrimonio_data.append(["TOTAL PASIVOS", f"${total_pasivos:,.2f}"])
 
             # Procesar patrimonio
@@ -908,15 +957,22 @@ def mostrar_balance_general(frame):
                                 monto = extraer_monto(entry)
                                 if monto > 0:
                                     cuenta = combo.get().split(' - ')[1]
-                                    patrimonio_items.append(["    " + cuenta, f"${monto:,.2f}"])
-                                    total_patrimonio += monto
+                                    # Verificar que la cuenta no haya sido procesada anteriormente
+                                    if cuenta not in cuentas_procesadas:
+                                        patrimonio_items.append(["    " + cuenta, f"${monto:,.2f}"])
+                                        total_patrimonio += monto
+                                        cuentas_procesadas.add(cuenta)  # Añadir la cuenta al conjunto
 
+            # Añadir datos de patrimonio al PDF
             if patrimonio_items:
                 pasivos_patrimonio_data.append(["PATRIMONIO", ""])
                 pasivos_patrimonio_data.extend(patrimonio_items)
                 pasivos_patrimonio_data.append(["TOTAL PATRIMONIO", f"${total_patrimonio:,.2f}"])
 
-            pasivos_patrimonio_data.append(["TOTAL PASIVOS Y PATRIMONIO", f"${(total_pasivos + total_patrimonio):,.2f}"])
+            # Calcular y añadir total de pasivos y patrimonio
+            total_pasivos_y_patrimonio = total_pasivos + total_patrimonio
+            pasivos_patrimonio_data.append(["TOTAL PASIVOS Y PATRIMONIO", f"${total_pasivos_y_patrimonio:,.2f}"])
+
 
             # Crear tabla de pasivos y patrimonio
             pasivos_patrimonio_table = Table(pasivos_patrimonio_data, colWidths=[4*inch, 2*inch])
